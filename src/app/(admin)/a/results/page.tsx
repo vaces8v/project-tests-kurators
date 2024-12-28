@@ -3,7 +3,7 @@
 import React, { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useTheme } from 'next-themes'
-import { Sun, Moon, FileText } from 'lucide-react'
+import { Sun, Moon, FileText, Filter, Search } from 'lucide-react'
 import { 
   Table, 
   TableHeader, 
@@ -12,7 +12,8 @@ import {
   TableRow, 
   TableCell,
   Chip,
-  Button
+  Button,
+  Input
 } from "@nextui-org/react"
 
 interface TestResult {
@@ -80,101 +81,117 @@ export default function ResultsPage() {
 
   return (
     <motion.div 
-      className="mx-auto p-6 max-w-full relative bg-gradient-to-br from-blue-50 to-blue-100 dark:bg-gradient-to-br dark:from-gray-900 dark:to-gray-800 min-h-screen overflow-hidden"
+      className="mx-auto p-4 sm:p-6 max-w-full relative bg-gradient-to-br from-blue-50 to-blue-100 dark:bg-gradient-to-br dark:from-gray-900 dark:to-gray-800 min-h-screen overflow-hidden"
       variants={containerVariants}
       initial="hidden"
       animate="visible"
     >
-      <AnimatePresence>
-        {themeTransition && (
-          <motion.div
-            initial={{ scale: 0, opacity: 1 }}
-            animate={{ 
-              scale: 5000, 
-              opacity: 1,
-              transition: { 
-                duration: 0.5, 
-                ease: "easeInOut" 
-              }
-            }}
-            exit={{ opacity: 0 }}
-            className="absolute z-50 bg-white dark:bg-gray-900 rounded-full pointer-events-none transition-colors duration-300"
-            style={{
-              width: '1px',
-              height: '1px',
-              left: 'calc(100% - 20px)',
-              top: '20px',
-              position: 'fixed'
-            }}
-          />
-        )}
-      </AnimatePresence>
-
-      <div className="absolute top-4 right-4">
-        <button 
-          onClick={toggleTheme} 
-          className="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors"
-        >
-          {theme === 'light' ? <Sun /> : <Moon />}
-        </button>
-      </div>
-
       <motion.div 
-        className="container mx-auto max-w-4xl bg-white dark:bg-gray-800 rounded-2xl shadow-2xl p-8"
+        className="container mx-auto w-[95%] sm:w-full sm:max-w-4xl bg-white dark:bg-gray-800 rounded-2xl shadow-2xl p-4 sm:p-8"
         variants={containerVariants}
       >
-        <h1 className="text-3xl font-bold text-center mb-6 text-gray-800 dark:text-white">
-          Результаты тестирования
-        </h1>
+        <div className="flex flex-col sm:flex-row justify-between items-center mb-4 sm:mb-6">
+          <h1 className="text-xl sm:text-3xl font-bold text-center sm:text-left text-gray-800 dark:text-white mb-2 sm:mb-0">
+            Результаты тестирования
+          </h1>
+          <div className="flex items-center space-x-2">
+            <Button 
+              variant="bordered" 
+              color="primary" 
+              size="sm"
+              className="w-full sm:w-auto"
+              startContent={<FileText size={16} />}
+            >
+              Экспорт
+            </Button>
+            <Button 
+              variant="solid" 
+              color="primary" 
+              size="sm"
+              className="w-full sm:w-auto"
+              startContent={<Filter size={16} />}
+            >
+              Фильтр
+            </Button>
+          </div>
+        </div>
 
-        <Table 
-          aria-label="Результаты тестов"
-          color="primary"
-          selectionMode="single"
-          classNames={{
-            th: "text-gray-700 dark:text-white",
-            td: "text-gray-700 dark:text-white"
-          }}
-        >
-          <TableHeader>
-            <TableColumn>ФИО</TableColumn>
-            <TableColumn>Группа</TableColumn>
-            <TableColumn>Тест</TableColumn>
-            <TableColumn>Дата</TableColumn>
-            <TableColumn>Уровень стресса</TableColumn>
-            <TableColumn>Психологический профиль</TableColumn>
-            <TableColumn>Действия</TableColumn>
-          </TableHeader>
-          <TableBody>
-            {results.map((result) => (
-              <TableRow key={result.id}>
-                <TableCell>{result.studentName}</TableCell>
-                <TableCell>{result.group}</TableCell>
-                <TableCell>{result.testName}</TableCell>
-                <TableCell>{result.date}</TableCell>
-                <TableCell>
-                  <Chip 
-                    color={getStressLevelColor(result.stressLevel)} 
-                    variant="flat"
-                  >
-                    {result.stressLevel}/10
-                  </Chip>
-                </TableCell>
-                <TableCell>{result.psychologicalProfile}</TableCell>
-                <TableCell>
-                  <Button 
-                    isIconOnly 
-                    size="sm" 
-                    variant="light" 
-                    color="primary"
-                  >
-                    <FileText />
-                  </Button>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+        <div className="w-full mb-4">
+          <Input
+            type="text"
+            placeholder="Поиск по результатам"
+            size="sm"
+            isClearable
+            startContent={<Search size={16} />}
+            className="w-full"
+            classNames={{
+              inputWrapper: "bg-gray-100 dark:bg-gray-700 rounded-xl",
+              input: "text-xs sm:text-sm"
+            }}
+          />
+        </div>
+
+        <div className="w-full">
+          <Table 
+            aria-label="Результаты тестов"
+            color="primary"
+            removeWrapper
+            className="w-full"
+            classNames={{
+              table: "w-full",
+              th: "text-gray-700 dark:text-white text-[10px] sm:text-xs bg-gray-100 dark:bg-gray-700",
+              td: "text-gray-700 dark:text-white text-[10px] sm:text-xs p-2"
+            }}
+          >
+            <TableHeader>
+              <TableColumn className="text-[10px] sm:text-xs">ФИО</TableColumn>
+              <TableColumn className="text-[10px] sm:text-xs hidden sm:table-cell">Группа</TableColumn>
+              <TableColumn className="text-[10px] sm:text-xs hidden sm:table-cell">Тест</TableColumn>
+              <TableColumn className="text-[10px] sm:text-xs hidden sm:table-cell">Дата</TableColumn>
+              <TableColumn className="text-[10px] sm:text-xs">Стресс</TableColumn>
+              <TableColumn className="text-[10px] sm:text-xs hidden sm:table-cell">Профиль</TableColumn>
+            </TableHeader>
+            <TableBody emptyContent="Нет результатов">
+              {results.map((result) => (
+                <TableRow key={result.id} className="hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer">
+                  <TableCell className="p-2">
+                    <div className="flex flex-col">
+                      <span className="font-semibold text-[10px] sm:text-xs">{result.studentName}</span>
+                      <div className="sm:hidden flex flex-col gap-1 mt-1 text-[9px]">
+                        <span className="flex items-center">
+                          <span className="mr-2 font-medium">Группа:</span> {result.group}
+                        </span>
+                        <span className="flex items-center">
+                          <span className="mr-2 font-medium">Тест:</span> {result.testName}
+                        </span>
+                        <span className="flex items-center">
+                          <span className="mr-2 font-medium">Дата:</span> {result.date}
+                        </span>
+                        <span className="flex items-center">
+                          <span className="mr-2 font-medium">Профиль:</span> {result.psychologicalProfile}
+                        </span>
+                      </div>
+                    </div>
+                  </TableCell>
+                  <TableCell className="hidden sm:table-cell p-2">{result.group}</TableCell>
+                  <TableCell className="hidden sm:table-cell p-2">{result.testName}</TableCell>
+                  <TableCell className="hidden sm:table-cell p-2">{result.date}</TableCell>
+                  <TableCell className="p-2">
+                    <Chip 
+                      color={getStressLevelColor(result.stressLevel)} 
+                      variant="flat"
+                      size="sm"
+                      className="text-[9px] sm:text-xs"
+                    >
+                      {result.stressLevel}/10
+                    </Chip>
+                  </TableCell>
+                  <TableCell className="hidden sm:table-cell p-2">{result.psychologicalProfile}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
       </motion.div>
     </motion.div>
   )

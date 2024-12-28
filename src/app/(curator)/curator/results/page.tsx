@@ -152,7 +152,7 @@ export default function CuratorResults() {
                   <Button 
                     variant="light" 
                     color="primary"
-                    onClick={() => resetTestResult(result.id)}
+                    onPress={() => resetTestResult(result.id)}
                     className="text-gray-800 dark:text-white hover:text-blue-600"
                   >
                     Сбросить результат

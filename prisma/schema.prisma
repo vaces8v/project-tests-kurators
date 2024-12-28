@@ -1,0 +1,145 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum UserRole {
+  ADMIN
+  CURATOR
+  STUDENT
+}
+
+enum QuestionType {
+  SINGLE_CHOICE
+  MULTIPLE_CHOICE
+  TEXT
+}
+
+enum AssignmentStatus {
+  ACTIVE
+  COMPLETED
+  ARCHIVED
+}
+
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  login     String   @unique
+  password  String
+  role      UserRole @default(CURATOR)
+  email     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  groups        Group[] @relation("GroupStudents")
+  curatedGroups Group[] @relation("CuratorGroups")
+  createdTests  Test[]
+  testLinks     TestLink[]
+}
+
+model Group {
+  id                 String    @id @default(cuid())
+  code               String    @unique
+  name               String    
+  groupStudents      User[]    @relation("GroupStudents")
+  groupStudentModels Student[]
+  curator            User?     @relation("CuratorGroups", fields: [curatorId], references: [id])
+  curatorId          String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  testAssignments    TestAssignment[]
+}
+
+model Student {
+  id         String   @id @default(cuid())
+  firstName  String
+  lastName   String
+  middleName String?
+  group      Group    @relation(fields: [groupId], references: [id])
+  groupId    String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  testAssignments TestAssignment[]
+  testResults  TestResult[]
+}
+
+model Test {
+  id            String   @id @default(cuid())
+  title         String
+  description   String?
+  author        User     @relation(fields: [authorId], references: [id])
+  authorId      String
+  questions     Question[]
+  testAssignments TestAssignment[]
+  testResults   TestResult[]
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model Question {
+  id            String   @id @default(cuid())
+  test          Test     @relation(fields: [testId], references: [id])
+  testId        String
+  text          String
+  type          QuestionType
+  options       QuestionOption[]
+  order         Int
+  createdAt     DateTime @default(now())
+  testResponses TestResponse[]
+}
+
+model QuestionOption {
+  id            String   @id @default(cuid())
+  question      Question @relation(fields: [questionId], references: [id])
+  questionId    String
+  text          String
+  score         Float    @default(0)
+  order         Int
+}
+
+model TestAssignment {
+  id            String   @id @default(cuid())
+  test          Test     @relation(fields: [testId], references: [id])
+  testId        String
+  group         Group    @relation(fields: [groupId], references: [id])
+  groupId       String
+  student       Student? @relation(fields: [studentId], references: [id])
+  studentId     String?
+  status        AssignmentStatus @default(ACTIVE)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model TestResult {
+  id            String   @id @default(cuid())
+  student       Student  @relation(fields: [studentId], references: [id])
+  studentId     String
+  test          Test     @relation(fields: [testId], references: [id])
+  testId        String
+  responses     TestResponse[]
+  totalScore    Float
+  completedAt   DateTime @default(now())
+}
+
+model TestResponse {
+  id            String   @id @default(cuid())
+  testResult    TestResult @relation(fields: [testResultId], references: [id])
+  testResultId  String
+  question      Question @relation(fields: [questionId], references: [id])
+  questionId    String
+  selectedOption String?
+  score         Float
+}
+
+model TestLink {
+  id        String   @id @default(cuid())
+  linkId    String   @unique
+  createdBy String
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  user      User     @relation(fields: [createdBy], references: [id])
+}

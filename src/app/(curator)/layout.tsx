@@ -134,7 +134,7 @@ export default function CuratorLayout({ children }: { children: React.ReactNode 
               <Button 
                 isIconOnly 
                 variant="light" 
-                onClick={toggleTheme}
+                onPress={toggleTheme}
                 className="text-gray-800 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-700"
               >
                 {theme === 'light' ? <Moon /> : <Sun />}
@@ -152,7 +152,7 @@ export default function CuratorLayout({ children }: { children: React.ReactNode 
               <Button 
                 isIconOnly 
                 variant="light" 
-                onClick={logout}
+                onPress={logout}
                 className="text-gray-800 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-700"
               >
                 <LogOut />

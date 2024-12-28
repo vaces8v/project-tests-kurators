@@ -3,6 +3,7 @@
 import React, { useState } from 'react'
 import { useTheme } from 'next-themes'
 import { motion, AnimatePresence } from 'framer-motion'
+import { signOut } from 'next-auth/react'
 import { 
   Navbar, 
   NavbarBrand, 
@@ -10,7 +11,10 @@ import {
   NavbarItem, 
   Link,
   Button,
-  Tooltip
+  Tooltip,
+  Drawer,
+  DrawerContent,
+  useDisclosure
 } from "@nextui-org/react"
 import { 
   FileText, 
@@ -21,7 +25,9 @@ import {
   Home, 
   List,
   Settings,
-  BookOpen
+  BookOpen,
+  Menu,
+  X
 } from 'lucide-react'
 import { useRouter, usePathname } from 'next/navigation'
 
@@ -30,6 +36,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const router = useRouter()
   const pathname = usePathname()
   const [themeTransition, setThemeTransition] = useState(false)
+  const { isOpen, onClose, onOpen } = useDisclosure()
 
   const toggleTheme = () => {
     setThemeTransition(true)
@@ -49,7 +56,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     { 
       href: '/a/users', 
       icon: <Users />, 
-      label: 'Пользователи' 
+      label: 'Кураторы' 
     },
     { 
       href: '/a/tests', 
@@ -69,8 +76,36 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   ]
 
   const logout = () => {
+    signOut()
     router.push('/login')
   }
+
+  const renderNavItems = (isMobile = false) => (
+    <>
+      {navItems.map((item) => (
+        <NavbarItem 
+          key={item.href} 
+          isActive={pathname === item.href}
+          className={isMobile ? 'w-full' : ''}
+        >
+          <Link 
+            color={pathname === item.href ? 'primary' : 'foreground'}
+            href={item.href}
+            onPress={onClose}
+            className={`
+              flex items-center gap-2 
+              text-gray-800 dark:text-white 
+              hover:text-blue-600 dark:hover:text-blue-400
+              ${isMobile ? 'w-full p-4 text-lg' : ''}
+            `}
+          >
+            {item.icon}
+            {item.label}
+          </Link>
+        </NavbarItem>
+      ))}
+    </>
+  )
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-blue-100 dark:bg-gradient-to-br dark:from-gray-900 dark:to-gray-800 relative overflow-hidden">
@@ -106,29 +141,87 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         isBordered 
         className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-md"
       >
-        <NavbarBrand>
+        <NavbarBrand className="flex items-center justify-between w-full">
           <p className="font-bold text-gray-800 dark:text-white">Психологический Тестер</p>
+          
+          {/* Mobile Menu Trigger */}
+          <div className="sm:hidden">
+            <Button 
+              isIconOnly 
+              variant="light" 
+              className="text-gray-800 dark:text-white"
+              onPress={onOpen}
+            >
+              <Menu />
+            </Button>
+            <Drawer 
+              isOpen={isOpen} 
+              onClose={onClose}
+              placement="left"
+              backdrop="blur"
+              className='w-[70%]'
+              hideCloseButton
+            >
+              <DrawerContent>
+                <div className="flex flex-col items-start w-full p-4 space-y-4">
+                  <div className="flex justify-between items-center w-full mb-4">
+                    <p className="text-xl font-bold text-gray-800 dark:text-white">Меню</p>
+                    <Button 
+                      isIconOnly 
+                      variant="light" 
+                      onPress={onClose}
+                    >
+                      <X />
+                    </Button>
+                  </div>
+                  <div className="flex flex-col w-full space-y-2">
+                    {renderNavItems(true)}
+                  </div>
+                  <div className="flex justify-between w-full mt-auto p-4">
+                    <Tooltip 
+                      content={theme === 'light' ? 'Темная тема' : 'Светлая тема'}
+                      classNames={{
+                        content: "text-gray-700 dark:text-white bg-white dark:bg-gray-800"
+                      }}
+                    >
+                      <Button 
+                        isIconOnly 
+                        variant="light" 
+                        onPress={toggleTheme}
+                        className="text-gray-800 dark:text-white hover:text-blue-600 dark:hover:text-blue-400"
+                      >
+                        {theme === 'light' ? <Moon /> : <Sun />}
+                      </Button>
+                    </Tooltip>
+
+                    <Tooltip 
+                      content="Выйти"
+                      classNames={{
+                        content: "text-gray-700 dark:text-white bg-white dark:bg-gray-800 text-sm font-medium py-2 px-4 bg-gray-100 dark:bg-gray-700 rounded-md"
+                      }}
+                    >
+                      <Button 
+                        isIconOnly 
+                        variant="light" 
+                        color="danger"
+                        onPress={logout}
+                        className="text-gray-800 dark:text-white hover:text-red-600 dark:hover:text-red-400"
+                      >
+                        <LogOut />
+                      </Button>
+                    </Tooltip>
+                  </div>
+                </div>
+              </DrawerContent>
+            </Drawer>
+          </div>
         </NavbarBrand>
 
         <NavbarContent className="hidden sm:flex gap-4" justify="center">
-          {navItems.map((item) => (
-            <NavbarItem 
-              key={item.href} 
-              isActive={pathname === item.href}
-            >
-              <Link 
-                color={pathname === item.href ? 'primary' : 'foreground'}
-                href={item.href}
-                className="flex items-center gap-2 text-gray-800 dark:text-white hover:text-blue-600 dark:hover:text-blue-400"
-              >
-                {item.icon}
-                {item.label}
-              </Link>
-            </NavbarItem>
-          ))}
+          {renderNavItems()}
         </NavbarContent>
 
-        <NavbarContent justify="center">
+        <NavbarContent justify="center" className="hidden sm:flex">
           <NavbarItem>
             <Tooltip 
               content={theme === 'light' ? 'Темная тема' : 'Светлая тема'}

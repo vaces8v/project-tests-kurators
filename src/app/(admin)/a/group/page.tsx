@@ -3,7 +3,12 @@
 import React, { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useTheme } from 'next-themes'
-import { Sun, Moon } from 'lucide-react'
+import { 
+  Edit, 
+  Trash2, 
+  Plus, 
+  UserPlus 
+} from 'lucide-react'
 import { 
   Table, 
   TableHeader, 
@@ -14,421 +19,633 @@ import {
   Input, 
   Button, 
   Select, 
-  SelectItem 
+  SelectItem,
+  Modal,
+  ModalContent,
+  ModalHeader,
+  ModalBody,
+  ModalFooter,
+  useDisclosure,
+  Tooltip,
+  Chip
 } from "@nextui-org/react"
+import { toast } from 'sonner'
+import { useRouter } from 'next/navigation'
 
-interface UserData {
-  firstName: string
-  lastName: string
-  middleName?: string
-  role?: string
+interface GroupData {
   id?: string
-  name?: string
-  group?: string
-  email?: string
+  code: string
+  name: string
+  curatorId?: string
+  curators?: { id: string, name: string }[]
+  curator?: { id: string, name: string, email: string }
+}
+
+interface CuratorData {
+  id: string
+  name: string
+  role: 'curator'
+  email: string
 }
 
 export default function GroupPage() {
-  const [users, setUsers] = useState<UserData[]>([
-    { firstName: '', lastName: '', middleName: '' }
-  ])
-  const [selectedGroup, setSelectedGroup] = useState<string>('')
-  const [selectedCurator, setSelectedCurator] = useState<string>('')
-  const [showToaster, setShowToaster] = useState(true)
-  const [showCuratorToaster, setShowCuratorToaster] = useState(false)
-  const [themeTransition, setThemeTransition] = useState(false)
+  const [groups, setGroups] = useState<GroupData[]>([])
+  const [curators, setCurators] = useState<CuratorData[]>([])
+  const [selectedGroup, setSelectedGroup] = useState<Partial<GroupData>>({})
+  const [isEditing, setIsEditing] = useState(false)
 
-  const { theme, setTheme } = useTheme()
+  const { 
+    isOpen: isGroupModalOpen, 
+    onOpen: onGroupModalOpen, 
+    onOpenChange: onGroupModalOpenChange 
+  } = useDisclosure()
 
-  const groups = [
-    { key: '307ИС', label: '307ИС' },
-    { key: '308ИС', label: '308ИС' },
-    { key: '309ИС', label: '309ИС' }
-  ]
+  const { 
+    isOpen: isDeleteModalOpen, 
+    onOpen: onDeleteModalOpen, 
+    onOpenChange: onDeleteModalOpenChange 
+  } = useDisclosure()
 
-  const curators = [
-    { 
-      id: '1', 
-      name: 'Марина Юрьевна', 
-      role: 'curator', 
-      group: '307ИС', 
-      email: 'ivan.smirnov@college.edu' 
-    },
-    { 
-      id: '2', 
-      name: 'Анна Петрова', 
-      role: 'curator', 
-      group: '308ИС', 
-      email: 'anna.petrova@college.edu' 
-    },
-    { 
-      id: '3', 
-      name: 'Елена Кузнецова', 
-      role: 'curator', 
-      group: '309ИС', 
-      email: 'elena.kuznetsova@college.edu' 
-    }
-  ]
-
-  const triggerToaster = () => {
-    setShowToaster(true)
-    const timer = setTimeout(() => {
-      setShowToaster(false)
-    }, 3000)
-    return () => clearTimeout(timer)
-  }
-
-  const triggerCuratorToaster = () => {
-    setShowCuratorToaster(true)
-    const timer = setTimeout(() => {
-      setShowCuratorToaster(false)
-    }, 3000)
-    return () => clearTimeout(timer)
-  }
-
-  const toggleTheme = (event: React.MouseEvent<HTMLButtonElement>) => {
-    const button = event.currentTarget
-    const buttonRect = button.getBoundingClientRect()
-    const centerX = buttonRect.left + buttonRect.width / 2
-    const centerY = buttonRect.top + buttonRect.height / 2
-
-    setThemeTransition(true)
-
-    setTimeout(() => {
-      setTheme(theme === 'light' ? 'dark' : 'light')
-      setThemeTransition(false)
-    }, 300)
-  }
+  const router = useRouter()
 
   useEffect(() => {
-    if (!selectedGroup) {
-      setShowToaster(true)
+    const fetchInitialData = async () => {
+      try {
+        // Загрузка групп
+        const groupsResponse = await fetch('/api/admin/groups')
+        
+        if (!groupsResponse.ok) {
+          const errorText = await groupsResponse.text()
+          console.error('Groups fetch error:', errorText)
+          throw new Error(`HTTP error! status: ${groupsResponse.status}, message: ${errorText}`)
+        }
+        
+        const groupsData = await groupsResponse.json()
+        console.log('Fetched groups:', groupsData)
+        
+        // Validate that groupsData is an array
+        if (!Array.isArray(groupsData)) {
+          throw new Error('Groups data is not an array')
+        }
+        
+        setGroups(groupsData)
+
+        // Загрузка кураторов
+        const curatorsResponse = await fetch('/api/admin/users?role=curator')
+        const curatorsData = await curatorsResponse.json()
+        setCurators(curatorsData)
+      } catch (error) {
+        console.error('Data fetch error:', error)
+        toast.error('Не удалось загрузить данные', {
+          description: error instanceof Error ? error.message : 'Проверьте подключение к серверу'
+        })
+      }
     }
+
+    fetchInitialData()
   }, [])
 
-  const handleInputChange = (index: number, field: keyof UserData, value: string) => {
-    if (!selectedGroup) {
-      triggerToaster()
+  const handleCreateGroup = async () => {
+    if (!selectedGroup.code || !selectedGroup.name) {
+      toast.error('Заполните код и название группы')
       return
     }
 
-    const newUsers = [...users]
-    newUsers[index] = { ...newUsers[index], [field]: value }
-    setUsers(newUsers)
+    // Найдем полную информацию о выбранном кураторе
+    const selectedCurator = curators.find(c => c.id === selectedGroup.curatorId)
+
+    console.log('Preparing to create group:', {
+      code: selectedGroup.code,
+      name: selectedGroup.name,
+      curatorId: selectedGroup.curatorId,
+      curatorName: selectedCurator?.name
+    })
+
+    try {
+      const response = await fetch('/api/admin/groups', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify({
+          code: selectedGroup.code,
+          name: selectedGroup.name,
+          curatorId: selectedGroup.curatorId,
+          curator: selectedCurator ? {
+            id: selectedCurator.id,
+            name: selectedCurator.name,
+            email: selectedCurator.email,
+            role: selectedCurator.role
+          } : null
+        })
+      })
+
+      console.log('Create group response status:', response.status)
+
+      let responseText = '';
+      let newGroup = null;
+
+      try {
+        responseText = await response.text()
+        console.log('Raw response text:', responseText)
+        
+        // Only parse if there's content
+        if (responseText.trim()) {
+          newGroup = JSON.parse(responseText)
+          console.log('Parsed response body:', newGroup)
+        }
+      } catch (parseError) {
+        console.error('Response parsing error:', parseError)
+        console.log('Unparseable response text:', responseText)
+      }
+
+      if (!response.ok) {
+        throw new Error(
+          newGroup?.error || 
+          newGroup?.details || 
+          responseText || 
+          'Не удалось создать группу'
+        )
+      }
+
+      // Fallback if parsing failed but response was successful
+      if (!newGroup) {
+        toast.warning('Группа создана, но данные не могут быть отображены')
+        return
+      }
+
+      setGroups(prev => [...prev, {
+        ...newGroup,
+        curator: selectedCurator ? {
+          id: selectedCurator.id,
+          name: selectedCurator.name,
+          email: selectedCurator.email
+        } : undefined,
+        curators: selectedCurator 
+          ? [{ id: selectedCurator.id, name: selectedCurator.name }] 
+          : [],
+        curatorId: selectedCurator?.id
+      }])
+      
+      toast.success(`Группа ${newGroup.name} создана`)
+      
+      // Сброс состояния
+      setSelectedGroup({})
+      onGroupModalOpenChange()
+    } catch (error) {
+      console.error('Group creation error:', error)
+      toast.error('Ошибка создания группы', {
+        description: error instanceof Error 
+          ? error.message 
+          : 'Неизвестная ошибка'
+      })
+    }
   }
 
-  // Add a new empty row
-  const addNewRow = () => {
-    if (!selectedGroup) {
-      setShowToaster(true)
+  const handleUpdateGroup = async () => {
+    if (!selectedGroup.id || !selectedGroup.code || !selectedGroup.name) {
+      toast.error('Заполните все обязательные поля')
       return
     }
+
+    // Найдем полную информацию о выбранном кураторе
+    const selectedCurator = curators.find(c => c.id === selectedGroup.curatorId)
+
+    console.log('Preparing to update group:', {
+      id: selectedGroup.id,
+      code: selectedGroup.code,
+      name: selectedGroup.name,
+      curatorId: selectedGroup.curatorId,
+      curatorName: selectedCurator?.name
+    })
+
+    try {
+      const updatePayload = {
+        id: selectedGroup.id,
+        code: selectedGroup.code,
+        name: selectedGroup.name,
+        curatorId: selectedGroup.curatorId || null,  
+        curator: selectedCurator ? {
+          id: selectedCurator.id,
+          name: selectedCurator.name,
+          email: selectedCurator.email,
+          role: selectedCurator.role
+        } : null
+      }
+
+      console.log('Update payload:', updatePayload)
+
+      const response = await fetch(`/api/admin/groups/${selectedGroup.id}`, {
+        method: 'PUT',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify(updatePayload)
+      })
+
+      console.log('Update response status:', response.status)
+
+      // Check for non-200 status before attempting to parse
+      if (!response.ok) {
+        const errorText = await response.text()
+        console.error('Update error response:', errorText)
+        throw new Error(errorText || 'Не удалось обновить группу')
+      }
+
+      const updatedGroup = await response.json()
+
+      console.log('Update response body:', updatedGroup)
+
+      // Обновляем список групп с новой информацией
+      setGroups(prev => 
+        prev.map(group => group.id === updatedGroup.id ? {
+          ...group,
+          ...updatedGroup,
+          curator: updatedGroup.curator ? {
+            id: updatedGroup.curator.id,
+            name: updatedGroup.curator.name,
+            email: selectedCurator?.email
+          } : null,
+          curatorId: updatedGroup.curator?.id,
+          curators: updatedGroup.curator ? 
+            [{ id: updatedGroup.curator.id, name: updatedGroup.curator.name }] 
+            : []
+        } : group)
+      )
+
+      // Показываем уведомление о статусе обновления куратора
+      if (updatedGroup.curator) {
+        toast.success(`Группа ${updatedGroup.name} обновлена`, {
+          description: `Куратор обновлен: ${updatedGroup.curator.name}`
+        })
+      } else if (updatedGroup.curatorChanged) {
+        toast.success(`Группа ${updatedGroup.name} обновлена`, {
+          description: 'Куратор группы был удален'
+        })
+      } else {
+        toast.success(`Группа ${updatedGroup.name} обновлена`)
+      }
+      
+      // Сброс состояния
+      setSelectedGroup({})
+      onGroupModalOpenChange()
+    } catch (error) {
+      console.error('Group update error:', error)
+      toast.error('Ошибка обновления группы', {
+        description: error instanceof Error ? error.message : 'Неизвестная ошибка'
+      })
+    }
+  }
+
+  const handleDeleteGroup = async () => {
+    if (!selectedGroup.id) {
+      toast.error('Группа не выбрана')
+      return
+    }
+
+    try {
+      const response = await fetch(`/api/admin/groups/${selectedGroup.id}`, {
+        method: 'DELETE'
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Не удалось удалить группу')
+      }
+
+      const result = await response.json()
+
+      // Remove the group from the state
+      setGroups(prev => prev.filter(group => group.id !== selectedGroup.id))
+      
+      // Provide detailed success message
+      if (result.curatorDisconnected) {
+        toast.success('Группа удалена', {
+          description: 'Группа была отвязана от куратора'
+        })
+      } else {
+        toast.success('Группа удалена')
+      }
+      
+      // Сброс состояния
+      setSelectedGroup({})
+      onDeleteModalOpenChange()
+    } catch (error) {
+      console.error('Group deletion error:', error)
+      toast.error('Ошибка удаления группы', {
+        description: error instanceof Error ? error.message : 'Неизвестная ошибка'
+      })
+    }
+  }
+
+  const initiateGroupEdit = (group: GroupData) => {
+    console.log('Initiating group edit:', {
+      groupId: group.id,
+      groupCode: group.code,
+      currentCurator: group.curator,
+      currentCuratorId: group.curator?.id || group.curatorId,
+      availableCurators: curators
+    })
+
+    // Determine the curator to use
+    const groupCurator = 
+      group.curator || 
+      (group.curatorId 
+        ? curators.find(c => c.id === group.curatorId) 
+        : undefined)
+
+    setSelectedGroup({
+      ...group,
+      // Preserve the full curator information
+      curator: groupCurator,
+      curatorId: groupCurator?.id
+    })
     
-    if (!selectedCurator) {
-      triggerCuratorToaster()
-      return
-    }
-
-    setUsers([...users, { firstName: '', lastName: '', middleName: '' }])
+    setIsEditing(true)
+    onGroupModalOpen()
   }
 
-  const handlePaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
-    if (!selectedGroup) {
-      triggerToaster()
-      e.preventDefault()
-      return
-    }
-
-    if (!selectedCurator) {
-      triggerCuratorToaster()
-      e.preventDefault()
-      return
-    }
-
-    e.preventDefault()
-    const pastedText = e.clipboardData.getData('text')
-    
-    const rows = pastedText.split('\n')
-      .map(row => row.trim())
-      .filter(row => row !== '')
-      .map(row => row.split('\t').map(cell => cell.trim()))
-
-    if (rows.length === 0) return
-
-    const parsedUsers: UserData[] = rows.map(row => ({
-      lastName: row[0] || '',
-      firstName: row[1] || '',
-      middleName: row[2] || ''
-    }))
-
-    setUsers(parsedUsers)
+  const initiateGroupDelete = (group: GroupData) => {
+    setSelectedGroup(group)
+    onDeleteModalOpen()
   }
 
-  const removeRow = (index: number) => {
-    if (!selectedGroup) {
-      triggerToaster()
-      return
-    }
-
-    if (!selectedCurator) {
-      triggerCuratorToaster()
-      return
-    }
-
-    if (users.length > 1) {
-      const newUsers = users.filter((_, i) => i !== index)
-      setUsers(newUsers)
-    }
+  const resetGroupModal = () => {
+    setSelectedGroup({})
+    setIsEditing(false)
   }
 
   return (
-    <motion.div
-      className="mx-auto p-6 max-w-full relative bg-gradient-to-br from-blue-50 to-blue-100 dark:bg-gradient-to-br dark:from-gray-900 dark:to-gray-800 min-h-screen overflow-hidden"
-      onPaste={handlePaste}
+    <motion.div 
+      className="mx-auto p-6 max-w-full relative bg-gradient-to-br from-blue-50 to-blue-100 dark:bg-gradient-to-br dark:from-gray-900 dark:to-gray-800 min-h-screen"
     >
-      <AnimatePresence>
-        {themeTransition && (
-          <motion.div
-            initial={{ scale: 0, opacity: 1 }}
-            animate={{ 
-              scale: 5000, 
-              opacity: 1,
-              transition: { 
-                duration: 0.5, 
-                ease: "easeInOut" 
-              }
+      <div className="w-[95%] sm:w-full md:max-w-5xl mx-auto bg-white dark:bg-gray-800 rounded-2xl shadow-2xl p-4 sm:p-6">
+        <div className="flex justify-between items-center mb-6">
+          <h1 className="text-2xl font-bold text-gray-800 dark:text-white">
+            Управление группами
+          </h1>
+          <Button 
+            color="primary" 
+            variant="shadow"
+            startContent={<Plus />}
+            onPress={() => {
+              resetGroupModal()
+              onGroupModalOpen()
             }}
-            exit={{ opacity: 0 }}
-            className="absolute z-50 bg-white dark:bg-gray-900 rounded-full pointer-events-none transition-colors duration-300"
-            style={{
-              width: '1px',
-              height: '1px',
-              left: 'calc(100% - 20px)',
-              top: '20px'
-            }}
-          />
-        )}
-      </AnimatePresence>
-
-      <div className="absolute top-4 right-4">
-        <button 
-          onClick={toggleTheme} 
-          className="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors"
-        >
-          <AnimatePresence mode="wait">
-            {theme === 'light' ? (
-              <motion.div
-                key="sun"
-                initial={{ opacity: 0, rotate: -90 }}
-                animate={{ opacity: 1, rotate: 0 }}
-                exit={{ opacity: 0, rotate: 90 }}
-                transition={{ duration: 0.3 }}
-              >
-                <Sun />
-              </motion.div>
-            ) : (
-              <motion.div
-                key="moon"
-                initial={{ opacity: 0, rotate: -90 }}
-                animate={{ opacity: 1, rotate: 0 }}
-                exit={{ opacity: 0, rotate: 90 }}
-                transition={{ duration: 0.3 }}
-              >
-                <Moon />
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </button>
-      </div>
-
-      <div className="w-full max-w-4xl mx-auto bg-white dark:bg-gray-800 rounded-2xl shadow-2xl p-6 transition-colors duration-300">
-        <h1 className="text-2xl font-bold mb-4 text-center text-gray-800 dark:text-white transition-colors duration-300">Создание пользователей</h1>
-        
-        <div className="mb-4 flex justify-center gap-4">
-          <Select
-            label="Выберите группу"
-            className="max-w-xs"
-            selectedKeys={selectedGroup ? [selectedGroup] : []}
-            onChange={(e) => {
-              setSelectedGroup(e.target.value)
-              setShowToaster(e.target.value ? false : true)
-            }}
-            classNames={{
-              trigger: "bg-white dark:bg-gray-700",
-              label: "text-gray-700 dark:text-white"
-            }}
+            className="text-white"
           >
-            {groups.map((group) => (
-              <SelectItem key={group.key} value={group.key}>
-                {group.label}
-              </SelectItem>
-            ))}
-          </Select>
-
-          <Select
-            label="Выберите куратора"
-            className="max-w-xs"
-            selectedKeys={selectedCurator ? [selectedCurator] : []}
-            onChange={(e) => {
-              setSelectedCurator(e.target.value)
-            }}
-            isDisabled={!selectedGroup}
-            classNames={{
-              trigger: "bg-white dark:bg-gray-700",
-              label: "text-gray-700 dark:text-white"
-            }}
-          >
-            {curators.filter(curator => curator.group === selectedGroup).map((curator) => (
-              <SelectItem key={curator.id} value={curator.id}>
-                {curator.name}
-              </SelectItem>
-            ))}
-          </Select>
+            Создать группу
+          </Button>
         </div>
-        
+
         <Table 
-          aria-label="Users creation table"
-          className="w-full"
-          removeWrapper
+          aria-label="Список групп"
+          color="primary"
+          selectionMode="single"
+          className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-md w-full"
           classNames={{
-            base: "bg-white dark:bg-gray-800 transition-colors duration-300",
-            th: "text-gray-700 dark:text-white bg-blue-50 dark:bg-gray-700",
-            td: "text-gray-700 dark:text-white",
-            tr: "hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors duration-300"
+            th: "bg-blue-50 dark:bg-gray-700 text-gray-800 dark:text-white",
+            td: "text-gray-800 dark:text-white"
           }}
         >
           <TableHeader>
-            <TableColumn className="text-gray-800 dark:text-white">Фамилия</TableColumn>
-            <TableColumn className="text-gray-800 dark:text-white">Имя</TableColumn>
-            <TableColumn className="text-gray-800 dark:text-white">Отчество</TableColumn>
-            <TableColumn className="text-gray-800 dark:text-white">Действия</TableColumn>
+            <TableColumn>Код группы</TableColumn>
+            <TableColumn>Название группы</TableColumn>
+            <TableColumn>Куратор</TableColumn>
+            <TableColumn>Действия</TableColumn>
           </TableHeader>
           <TableBody>
-            {users.length === 0 ? (
+            {groups.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={4} className="text-center text-gray-800 dark:text-white">
-                  {!selectedGroup 
-                    ? 'Пожалуйста, выберите группу' 
-                    : !selectedCurator 
-                      ? 'Пожалуйста, выберите куратора' 
-                      : 'Пользователи не найдены'}
+                <TableCell colSpan={4} className="text-center text-sm text-gray-500 dark:text-gray-400 py-8">
+                  <div className="flex flex-col items-center justify-center space-y-4">
+                    <svg 
+                      xmlns="http://www.w3.org/2000/svg" 
+                      className="h-16 w-16 text-gray-300 dark:text-gray-600" 
+                      fill="none" 
+                      viewBox="0 0 24 24" 
+                      stroke="currentColor"
+                    >
+                      <path 
+                        strokeLinecap="round" 
+                        strokeLinejoin="round" 
+                        strokeWidth={1} 
+                        d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" 
+                      />
+                    </svg>
+                    <p className="text-lg font-semibold">
+                      Пока что групп не существует
+                    </p>
+                    <p className="text-sm text-gray-400">
+                      Создайте первую группу, нажав кнопку "Создать группу"
+                    </p>
+                  </div>
                 </TableCell>
+                <TableCell className="hidden">{''}</TableCell>
+                <TableCell className="hidden">{''}</TableCell>
+                <TableCell className="hidden">{''}</TableCell>
               </TableRow>
             ) : (
-              users.map((user, index) => (
-                <TableRow key={index}>
-                  <TableCell>
-                    <Input
-                      value={user.lastName}
-                      onChange={(e) => handleInputChange(index, 'lastName', e.target.value)}
-                      placeholder="Введите фамилию"
-                      size="sm"
-                      isDisabled={!selectedGroup || !selectedCurator}
-                      classNames={{
-                        input: "text-gray-800 dark:text-white placeholder:text-gray-500 dark:placeholder:text-gray-400 transition-colors duration-300"
-                      }}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <Input
-                      value={user.firstName}
-                      onChange={(e) => handleInputChange(index, 'firstName', e.target.value)}
-                      placeholder="Введите имя"
-                      size="sm"
-                      isDisabled={!selectedGroup || !selectedCurator}
-                      classNames={{
-                        input: "text-gray-800 dark:text-white placeholder:text-gray-500 dark:placeholder:text-gray-400 transition-colors duration-300"
-                      }}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <Input
-                      value={user.middleName || ''}
-                      onChange={(e) => handleInputChange(index, 'middleName', e.target.value)}
-                      placeholder="Введите отчество"
-                      size="sm"
-                      isDisabled={!selectedGroup || !selectedCurator}
-                      classNames={{
-                        input: "text-gray-800 dark:text-white placeholder:text-gray-500 dark:placeholder:text-gray-400 transition-colors duration-300"
-                      }}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <Button 
-                      color="danger" 
-                      variant="light" 
-                      size="sm"
-                      onClick={() => removeRow(index)}
-                      isDisabled={users.length <= 1 || !selectedGroup || !selectedCurator}
-                    >
-                      Удалить
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))
+              groups.map((group) => {
+                // Prefer curators from the group, fallback to finding by curatorId
+                const curator = 
+                  group.curator || 
+                  (group.curatorId 
+                    ? curators.find(c => c.id === group.curatorId) 
+                    : undefined)
+
+                console.log('Group curator details:', {
+                  groupId: group.id,
+                  code: group.code,
+                  curatorId: group.curatorId,
+                  groupCurator: group.curator,
+                  curators: group.curators,
+                  resolvedCurator: curator
+                })
+                
+                return (
+                  <TableRow key={group.id}>
+                    <TableCell>{group.code}</TableCell>
+                    <TableCell>{group.name}</TableCell>
+                    <TableCell>
+                      {curator ? (
+                        <Chip 
+                          color="secondary" 
+                          variant="flat" 
+                          size="sm"
+                        >
+                          <span>{curator.name}</span>
+                        </Chip>
+                      ) : (
+                        <Chip 
+                          color="warning" 
+                          variant="flat" 
+                          size="sm"
+                        >
+                          <span>Не назначен</span>
+                        </Chip>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <Tooltip content="Редактировать группу">
+                          <Button
+                            isIconOnly
+                            size="sm"
+                            variant="light"
+                            onPress={() => initiateGroupEdit(group)}
+                            className="text-gray-800 dark:text-white hover:text-blue-600"
+                          >
+                            <Edit size={16} />
+                          </Button>
+                        </Tooltip>
+                        <Tooltip content="Управление студентами">
+                          <Button
+                            size="sm"
+                            variant="light"
+                            color="primary"
+                            onPress={() => router.push(`/a/students/${group.id}`)}
+                            className="text-gray-800 dark:text-white hover:text-blue-600"
+                          >
+                            Студенты
+                          </Button>
+                        </Tooltip>
+                        <Tooltip content="Удалить группу">
+                          <Button
+                            isIconOnly
+                            size="sm"
+                            variant="light"
+                            color="danger"
+                            onPress={() => initiateGroupDelete(group)}
+                            className="text-gray-800 dark:text-white hover:text-red-600"
+                          >
+                            <Trash2 size={16} />
+                          </Button>
+                        </Tooltip>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                )
+              })
             )}
           </TableBody>
         </Table>
 
-        <div className="flex justify-between mt-4">
-          <Button 
-            color="primary" 
-            variant="solid" 
-            onClick={addNewRow}
-            isDisabled={!selectedGroup || !selectedCurator}
-          >
-            Добавить строку
-          </Button>
-          <Button 
-            color="success" 
-            variant="solid"
-            isDisabled={!selectedGroup || !selectedCurator || users.length === 0}
-          >
-            Сохранить пользователей
-          </Button>
-        </div>
+        {/* Модальное окно создания/редактирования группы */}
+        <Modal 
+          isOpen={isGroupModalOpen}
+          backdrop='blur'
+          onOpenChange={onGroupModalOpenChange}
+          onClose={resetGroupModal}
+          className="text-gray-800 dark:text-white"
+          size="md"
+        >
+          <ModalContent>
+            {(onClose) => (
+              <>
+                <ModalHeader>
+                  {isEditing ? 'Редактирование группы' : 'Создание группы'}
+                </ModalHeader>
+                <ModalBody className="space-y-4">
+                  <Input
+                    label="Код группы"
+                    value={selectedGroup.code || ''}
+                    onValueChange={(value) => setSelectedGroup(prev => ({ ...prev, code: value }))}
+                    variant="bordered"
+                    placeholder="Например, 307ИС"
+                  />
+                  <Input
+                    label="Название группы"
+                    value={selectedGroup.name || ''}
+                    onValueChange={(value) => setSelectedGroup(prev => ({ ...prev, name: value }))}
+                    variant="bordered"
+                    placeholder="Например, Информационные системы"
+                  />
+                  <Select
+                    label="Куратор группы"
+                    variant="bordered"
+                    placeholder="Выберите куратора"
+                    selectedKeys={
+                      selectedGroup.curator?.id || selectedGroup.curatorId 
+                        ? new Set([selectedGroup.curator?.id || selectedGroup.curatorId].filter(Boolean) as string[]) 
+                        : new Set()
+                    }
+                    onSelectionChange={(keys) => {
+                      const selectedCuratorId = Array.from(keys)[0] as string
+                      setSelectedGroup(prev => ({ 
+                        ...prev, 
+                        curatorId: selectedCuratorId,
+                        curator: curators.find(c => c.id === selectedCuratorId)
+                      }))
+                    }}
+                  >
+                    {curators.map((curator) => (
+                      <SelectItem key={curator.id} value={curator.id}>
+                        {curator.name}
+                      </SelectItem>
+                    ))}
+                  </Select>
+                </ModalBody>
+                <ModalFooter>
+                  <Button 
+                    variant="light" 
+                    onPress={onClose}
+                  >
+                    Отмена
+                  </Button>
+                  <Button 
+                    color="primary" 
+                    onPress={isEditing ? handleUpdateGroup : handleCreateGroup}
+                    isDisabled={!selectedGroup.code || !selectedGroup.name}
+                    className="text-white"
+                  >
+                    {isEditing ? 'Обновить' : 'Создать'}
+                  </Button>
+                </ModalFooter>
+              </>
+            )}
+          </ModalContent>
+        </Modal>
 
-        <AnimatePresence>
-          {showToaster && (
-            <motion.div
-              initial={{ opacity: 0, scale: 0.5, originX: 1 }}
-              animate={{ opacity: 1, scale: 1, originX: 1 }}
-              exit={{ opacity: 0, scale: 0.5, originX: 1 }}
-              transition={{ 
-                duration: 0.3, 
-                type: "spring",
-                stiffness: 300,
-                damping: 20
-              }}
-              className="fixed bottom-4 right-4 
-              bg-blue-500 text-white px-6 py-3 rounded-lg shadow-lg 
-              flex items-center justify-center z-[100] w-auto max-w-md text-center"
-            >
-              <p className="text-sm font-medium">Пожалуйста, выберите группу перед началом работы</p>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        <AnimatePresence>
-          {showCuratorToaster && (
-            <motion.div
-              initial={{ opacity: 0, scale: 0.5, originX: 1 }}
-              animate={{ opacity: 1, scale: 1, originX: 1 }}
-              exit={{ opacity: 0, scale: 0.5, originX: 1 }}
-              transition={{ 
-                duration: 0.3, 
-                type: "spring",
-                stiffness: 300,
-                damping: 20
-              }}
-              className="fixed bottom-4 right-4 
-              bg-orange-500 text-white px-6 py-3 rounded-lg shadow-lg 
-              flex items-center justify-center z-[100] w-auto max-w-md text-center"
-            >
-              <p className="text-sm font-medium">Пожалуйста, выберите куратора перед добавлением пользователей</p>
-            </motion.div>
-          )}
-        </AnimatePresence>
+        {/* Модальное окно подтверждения удаления */}
+        <Modal 
+          isOpen={isDeleteModalOpen}
+          backdrop='blur'
+          onOpenChange={onDeleteModalOpenChange}
+          className="text-gray-800 dark:text-white"
+          size="md"
+        >
+          <ModalContent>
+            {(onClose) => (
+              <>
+                <ModalHeader>Удаление группы</ModalHeader>
+                <ModalBody>
+                  <p>
+                    Вы уверены, что хотите удалить группу "{selectedGroup.name}"? 
+                    Это действие нельзя будет отменить.
+                  </p>
+                </ModalBody>
+                <ModalFooter>
+                  <Button 
+                    variant="light" 
+                    onPress={onClose}
+                  >
+                    Отмена
+                  </Button>
+                  <Button 
+                    color="danger" 
+                    onPress={handleDeleteGroup}
+                    className="text-white"
+                  >
+                    Удалить
+                  </Button>
+                </ModalFooter>
+              </>
+            )}
+          </ModalContent>
+        </Modal>
       </div>
     </motion.div>
   )

@@ -19,3 +19,25 @@ body {
   background: var(--background);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Custom Scrollbar */
+* {
+  scrollbar-width: auto;
+  scrollbar-color: transparent;
+}
+
+*::-webkit-scrollbar {
+  @apply w-3 h-3 bg-transparent;
+}
+
+*::-webkit-scrollbar-track {
+  @apply bg-transparent dark:bg-gray-800;
+}
+
+*::-webkit-scrollbar-thumb {
+  @apply bg-blue-400 dark:bg-blue-600 rounded-full border-4 border-transparent border-solid bg-clip-content hover:bg-blue-600 dark:hover:bg-blue-600 transition-colors duration-300;
+}
+
+*::-webkit-scrollbar-corner {
+  @apply bg-transparent;
+}

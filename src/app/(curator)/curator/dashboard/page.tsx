@@ -2,6 +2,9 @@
 
 import React, { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
+import { useSession } from 'next-auth/react'
+import { redirect } from 'next/navigation'
+import { toast } from 'sonner'
 import { 
   Card, 
   CardHeader, 
@@ -26,14 +29,19 @@ import { useTheme } from 'next-themes'
 const Chart = dynamic(() => import('react-apexcharts'), { ssr: false })
 
 export default function CuratorDashboard() {
-  const { theme } = useTheme()
+  const { data: session, status } = useSession({
+    required: true,
+    onUnauthenticated() {
+      redirect('/login')
+    }
+  })
+
+  const [tests, setTests] = useState([])
+  const [groups, setGroups] = useState([])
+  const [isLoading, setIsLoading] = useState(true)
   const [selectedGroup, setSelectedGroup] = useState('307ИС')
 
-  const groups = [
-    { key: '307ИС', label: 'Группа 307ИС' },
-    { key: '308ИС', label: 'Группа 308ИС' },
-    { key: '309ИС', label: 'Группа 309ИС' }
-  ]
+  const { theme } = useTheme()
 
   const getChartTheme = (baseOptions: ApexOptions): ApexOptions => ({
     ...baseOptions,
@@ -139,13 +147,67 @@ export default function CuratorDashboard() {
   })
 
   useEffect(() => {
-    setStressLevelChartOptions(prevOptions => 
-      getChartTheme(prevOptions)
-    )
-    setPerformanceChartOptions(prevOptions => 
-      getChartTheme(prevOptions)
-    )
-  }, [theme])
+    if (status === 'authenticated' && session?.user?.role !== 'CURATOR') {
+      toast.error('Unauthorized Access', {
+        description: 'You do not have curator privileges'
+      })
+      redirect('/')
+    }
+
+    async function fetchDashboardData() {
+      try {
+        // Fetch tests
+        const testsResponse = await fetch('/api/curator/tests')
+        const testsData = await testsResponse.json()
+        
+        if (testsResponse.ok) {
+          setTests(testsData)
+        } else {
+          toast.error('Error fetching tests', {
+            description: testsData.error || 'Something went wrong'
+          })
+        }
+
+        // Fetch groups
+        const groupsResponse = await fetch('/api/curator/groups')
+        const groupsData = await groupsResponse.json()
+        
+        if (groupsResponse.ok) {
+          setGroups(groupsData)
+        } else {
+          toast.error('Error fetching groups', {
+            description: groupsData.error || 'Something went wrong'
+          })
+        }
+      } catch (error) {
+        toast.error('Network Error', {
+          description: 'Unable to fetch dashboard data'
+        })
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    if (status === 'authenticated') {
+      fetchDashboardData()
+    }
+  }, [status, session])
+
+  const handleCreateTest = () => {
+    // Redirect to test creation page
+    redirect('/curator/tests/create')
+  }
+
+  const handleCreateGroup = () => {
+    // Redirect to group creation page
+    redirect('/curator/groups/create')
+  }
+
+  const groupsList = [
+    { key: '307ИС', label: 'Группа 307ИС' },
+    { key: '308ИС', label: 'Группа 308ИС' },
+    { key: '309ИС', label: 'Группа 309ИС' }
+  ]
 
   const dashboardStats = [
     { 
@@ -168,6 +230,19 @@ export default function CuratorDashboard() {
     }
   ]
 
+  useEffect(() => {
+    setStressLevelChartOptions(prevOptions => 
+      getChartTheme(prevOptions)
+    )
+    setPerformanceChartOptions(prevOptions => 
+      getChartTheme(prevOptions)
+    )
+  }, [theme])
+
+  if (status === 'loading') {
+    return <div>Loading...</div>
+  }
+
   return (
     <div className="space-y-6 p-6 bg-gradient-to-br from-blue-50 to-blue-100 dark:bg-gradient-to-br dark:from-gray-900 dark:to-gray-800 min-h-screen">
       <div className="flex justify-between items-center">
@@ -186,7 +261,7 @@ export default function CuratorDashboard() {
             value: "text-gray-800 dark:text-white"
           }}
         >
-          {groups.map((group) => (
+          {groupsList.map((group) => (
             <SelectItem 
               key={group.key} 
               value={group.key}
@@ -281,6 +356,96 @@ export default function CuratorDashboard() {
               />
             </CardBody>
           </Card>
+        </motion.div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Tests Section */}
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-white shadow-md rounded-lg p-6"
+        >
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-2xl font-semibold">My Tests</h2>
+            <button 
+              onClick={handleCreateTest}
+              className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
+            >
+              Create Test
+            </button>
+          </div>
+          {isLoading ? (
+            <div>Loading tests...</div>
+          ) : tests.length === 0 ? (
+            <p>No tests created yet</p>
+          ) : (
+            <ul className="space-y-2">
+              {tests.map((test: any) => (
+                <li 
+                  key={test.id} 
+                  className="border-b pb-2 flex justify-between items-center"
+                >
+                  <div>
+                    <h3 className="font-medium">{test.title}</h3>
+                    <p className="text-sm text-gray-500">
+                      Difficulty: {test.difficulty}
+                      {' | '}
+                      Questions: {test._count?.questions || 0}
+                      {' | '}
+                      Assignments: {test._count?.assignments || 0}
+                    </p>
+                  </div>
+                  <button className="text-blue-500 hover:underline">
+                    View Details
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </motion.div>
+
+        {/* Groups Section */}
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-white shadow-md rounded-lg p-6"
+        >
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-2xl font-semibold">My Groups</h2>
+            <button 
+              onClick={handleCreateGroup}
+              className="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600"
+            >
+              Create Group
+            </button>
+          </div>
+          {isLoading ? (
+            <div>Loading groups...</div>
+          ) : groups.length === 0 ? (
+            <p>No groups created yet</p>
+          ) : (
+            <ul className="space-y-2">
+              {groups.map((group: any) => (
+                <li 
+                  key={group.id} 
+                  className="border-b pb-2 flex justify-between items-center"
+                >
+                  <div>
+                    <h3 className="font-medium">{group.name}</h3>
+                    <p className="text-sm text-gray-500">
+                      Students: {group._count?.students || 0}
+                      {' | '}
+                      Tests: {group._count?.testAssignments || 0}
+                    </p>
+                  </div>
+                  <button className="text-blue-500 hover:underline">
+                    View Details
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </motion.div>
       </div>
     </div>
