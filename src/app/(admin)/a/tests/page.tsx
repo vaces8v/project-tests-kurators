@@ -30,7 +30,7 @@ interface Test {
   title: string
   description?: string
   questions: number
-  assignedGroups: string[]
+  assignedGroups?: string[]
 }
 
 interface Question {
@@ -208,6 +208,7 @@ export default function TestsManagement() {
         assignedGroups: newTest.assignedGroups || []
       }
 
+      // Debug logging
       console.log('Sending payload:', JSON.stringify(payload, null, 2))
 
       const response = await fetch('/api/tests', {
@@ -218,36 +219,21 @@ export default function TestsManagement() {
         body: JSON.stringify(payload)
       })
       
-      // Log the full response for debugging
-      console.log('Response status:', response.status)
-      console.log('Response headers:', Object.fromEntries(response.headers.entries()))
-
-      // Try to get response text before parsing
-      const responseText = await response.text()
-      console.log('Raw response text:', responseText)
-
-      // Parse the response text
-      let responseData;
-      try {
-        responseData = responseText ? JSON.parse(responseText) : null
-      } catch (parseError) {
-        console.error('Error parsing response:', parseError)
+      // Improved error handling
+      if (!response.ok) {
+        const errorText = await response.text()
+        console.error('Server error response:', errorText)
+        
         toast.error('Test Creation Failed', {
-          description: `Unable to parse server response. Status: ${response.status}. Response: ${responseText}`,
+          description: `Server responded with status ${response.status}: ${errorText}`,
           duration: 5000
         })
         return
       }
 
-      if (response.ok) {
-        if (!responseData) {
-          toast.error('Test Creation Failed', {
-            description: 'Received empty response from server',
-            duration: 5000
-          })
-          return
-        }
+      const responseData = await response.json()
 
+      if (responseData) {
         setTests(prev => [...prev, responseData])
         // Reset form
         setNewTest({
@@ -259,28 +245,10 @@ export default function TestsManagement() {
         onTestModalOpenChange()
         toast.success('Test created successfully')
       } else {
-        // Handle error response
-        if (!responseData) {
-          toast.error('Test Creation Failed', {
-            description: `Unexpected server error. Status: ${response.status}`,
-            duration: 5000
-          })
-          return
-        }
-
-        console.error('Test creation error:', responseData)
-        
-        if (responseData.invalidGroups) {
-          toast.error('Invalid Group IDs', {
-            description: `The following group IDs are invalid: ${responseData.invalidGroups.join(', ')}`,
-            duration: 5000
-          })
-        } else {
-          toast.error('Test Creation Failed', {
-            description: responseData.details || responseData.error || 'Unexpected server error',
-            duration: 5000
-          })
-        }
+        toast.error('Test Creation Failed', {
+          description: 'Received empty response from server',
+          duration: 5000
+        })
       }
     } catch (error) {
       console.error('Unexpected error during test creation:', error)
@@ -360,7 +328,9 @@ export default function TestsManagement() {
                   </TableCell>
                   <TableCell className="hidden sm:table-cell">{test.description || '-'}</TableCell>
                   <TableCell className="hidden sm:table-cell">{test.questions}</TableCell>
-                  <TableCell className="hidden sm:table-cell">{test.assignedGroups.join(', ') || '-'}</TableCell>
+                  <TableCell className="hidden sm:table-cell">
+                    {Array.isArray(test.assignedGroups) ? test.assignedGroups.join(', ') : '-'}
+                  </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2">
                       <Button 
@@ -665,4 +635,5 @@ export default function TestsManagement() {
         </ModalContent>
       </Modal>
     </motion.div>
-  )}
+  )
+}

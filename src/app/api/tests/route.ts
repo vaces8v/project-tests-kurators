@@ -24,11 +24,25 @@ export async function GET() {
       include: {
         _count: {
           select: { questions: true, testAssignments: true }
+        },
+        testAssignments: {
+          select: {
+            groupId: true
+          }
         }
       }
     })
 
-    return NextResponse.json(tests)
+    // Transform tests to include assignedGroups
+    const transformedTests = tests.map(test => ({
+      id: test.id,
+      title: test.title,
+      description: test.description || '',
+      questions: test._count.questions,
+      assignedGroups: test.testAssignments.map(assignment => assignment.groupId)
+    }))
+
+    return NextResponse.json(transformedTests)
   } catch (error) {
     console.error('Error fetching tests:', error)
     return NextResponse.json({ 
@@ -48,6 +62,9 @@ export async function POST(request: Request) {
         details: 'Only admin users can create tests'
       }, { status: 403 })
     }
+
+    // Detailed logging for debugging
+    console.log('Session user:', session.user)
 
     // Detailed user verification with logging
     let user = await prisma.user.findUnique({
@@ -76,14 +93,13 @@ export async function POST(request: Request) {
       }, { status: 403 })
     }
 
-    console.log('Authenticated User:', user)
-
     // More robust payload parsing
     let payload;
     try {
       const rawBody = await request.text()
-      console.log('Raw request body:', rawBody)
+      console.log('Raw request body:', rawBody) // Debug logging
       payload = JSON.parse(rawBody)
+      console.log('Parsed payload:', payload) // Debug logging
     } catch (parseError) {
       console.error('JSON parsing error:', parseError)
       return NextResponse.json({ 
@@ -148,8 +164,6 @@ export async function POST(request: Request) {
         }
       })
 
-      console.log('Validated Groups:', validatedGroups)
-
       const validGroupIds = validatedGroups.map(group => group.id)
       const invalidGroups = assignedGroups.filter((id: string) => !validGroupIds.includes(id))
 
@@ -173,6 +187,12 @@ export async function POST(request: Request) {
             title,
             description: description || '',
             authorId: user.id,
+            // Add group assignments
+            testAssignments: assignedGroups && assignedGroups.length > 0 ? {
+              create: assignedGroups.map((groupId: string) => ({
+                groupId: groupId
+              }))
+            } : undefined
           }
         })
       } catch (createTestError) {
@@ -202,56 +222,19 @@ export async function POST(request: Request) {
                     order: optIndex
                   })) : []
                 }
-              },
-              include: {
-                options: true
               }
             })
+
             return createdQuestion
-          } catch (questionCreateError) {
-            console.error(`Error creating question ${qIndex}:`, questionCreateError)
-            throw new Error(`Failed to create question: ${questionCreateError instanceof Error ? questionCreateError.message : String(questionCreateError)}`)
+          } catch (questionError) {
+            console.error(`Error creating question at index ${qIndex}:`, questionError)
+            throw questionError
           }
         })
       )
 
-      // Create test assignments with error handling
-      if (validatedGroups.length > 0) {
-        try {
-          // Ensure the test author is the curator of the assigned groups
-          const invalidGroupAssignments = validatedGroups.filter(
-            group => group.curator.id !== user.id
-          )
-
-          if (invalidGroupAssignments.length > 0) {
-            throw new Error(`Test can only be assigned to groups with curator as the author. Invalid groups: ${invalidGroupAssignments.map(g => g.name).join(', ')}`)
-          }
-
-          await prisma.testAssignment.createMany({
-            data: validatedGroups.map((group) => ({
-              testId: createdTest.id,
-              groupId: group.id,
-              status: 'ACTIVE'
-            }))
-          })
-        } catch (assignmentCreateError) {
-          console.error('Test assignment creation error:', assignmentCreateError)
-          throw new Error(`Failed to create test assignments: ${assignmentCreateError instanceof Error ? assignmentCreateError.message : String(assignmentCreateError)}`)
-        }
-      }
-
-      // Return the created test with questions and assignments
-      return {
-        ...createdTest,
-        questions: createdQuestions,
-        assignments: validatedGroups.map((group) => ({
-          groupId: group.id,
-          groupName: group.name
-        }))
-      }
+      return { ...createdTest, questions: createdQuestions }
     })
-
-    console.log('Created Test:', test)
 
     return NextResponse.json(test, { status: 201 })
   } catch (error) {

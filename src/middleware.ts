@@ -6,6 +6,7 @@ export async function middleware(request: NextRequest) {
   const token = await getToken({ req: request })
   const path = request.nextUrl.pathname
 
+
   // Публичные пути
   const publicPaths = ['/login', '/']
 

@@ -11,8 +11,6 @@ export async function GET(request: Request) {
   try {
     const session = await getServerSession(authOptions)
     
-    console.log('Session:', session) // Debug logging
-    
     // Ensure only curators can access their groups
     if (!session) {
       console.error('No session found')
@@ -62,8 +60,6 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const session = await getServerSession(authOptions)
-    
-    console.log('Session:', session) // Debug logging
     
     // Ensure only curators can create groups
     if (!session) {

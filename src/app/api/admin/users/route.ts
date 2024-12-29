@@ -58,7 +58,6 @@ export async function GET(request: Request) {
       }
     })
     
-    console.log('Fetched users:', JSON.stringify(users, null, 2))
     return NextResponse.json(users)
   } catch (error) {
     console.error('User fetch error:', error)
@@ -77,11 +76,6 @@ export async function POST(request: Request) {
   }
 
   try {
-    console.log('Full request details:', {
-      method: request.method,
-      url: request.url,
-      headers: Object.fromEntries(request.headers),
-    })
 
     const { name, login, role, email, password, groups } = await request.json()
 
@@ -149,15 +143,6 @@ export async function PUT(request: Request) {
     const body = await request.json()
     const { id, name, login, role, email, groupIds } = body
 
-    console.log('Received user update request:', {
-      id, 
-      name, 
-      login, 
-      role, 
-      email, 
-      groupIds
-    })
-
     // Validate input
     if (!id || !name || !login) {
       return NextResponse.json({ error: 'ID, name, and login are required' }, { status: 400 })
@@ -186,8 +171,6 @@ export async function PUT(request: Request) {
           select: { id: true, code: true, name: true }
         })
 
-        console.log('Existing groups:', existingGroups)
-        console.log('Requested group IDs:', groupIds)
 
         // Check if all requested groups exist
         const existingGroupIds = existingGroups.map(group => group.id)
@@ -249,8 +232,6 @@ export async function PUT(request: Request) {
       return updatedUserWithGroups
     })
 
-    console.log('Final updated user:', updatedUser)
-
     // Return the updated user with groups
     return NextResponse.json({
       ...updatedUser,
@@ -273,11 +254,6 @@ export async function DELETE(request: Request) {
   }
 
   try {
-    console.log('Full request details:', {
-      method: request.method,
-      url: request.url,
-      headers: Object.fromEntries(request.headers),
-    })
 
     const { searchParams } = new URL(request.url)
     const userId = searchParams.get('id')

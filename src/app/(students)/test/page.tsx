@@ -110,11 +110,6 @@ export default function StudentTestPage() {
     )
   }
 
-  const submitTest = () => {
-    console.log('Test submitted with answers:', selectedAnswers)
-    // TODO: Implement actual submission logic
-  }
-
   const toggleTheme = () => {
     setThemeTransition(true)
 
@@ -241,7 +236,6 @@ export default function StudentTestPage() {
                   color="success"
                   variant="shadow"
                   className="w-full transition-all duration-300 ease-in-out hover:scale-105 hover:shadow-lg text-xs sm:text-base"
-                  onPress={submitTest}
                   isDisabled={Object.keys(selectedAnswers).length !== questions.length}
                   endContent={
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4 sm:w-5 sm:h-5">

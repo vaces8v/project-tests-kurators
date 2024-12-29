@@ -156,14 +156,6 @@ export default function UserManagement() {
     // Explicitly handle group detachment
     const groupIds = currentUser.groups?.map(group => group.id) || []
     
-    console.log('Preparing to update user:', {
-      id: currentUser.id,
-      name: currentUser.name,
-      login: currentUser.login,
-      role: currentUser.role,
-      email: currentUser.email,
-      groupIds: groupIds
-    })
 
     try {
       // Start a transaction to update both user and groups
@@ -187,17 +179,9 @@ export default function UserManagement() {
       const userResponse = await userUpdatePromise
       const result = await userResponse.json()
 
-      console.log('Full user update response:', {
-        status: userResponse.status,
-        ok: userResponse.ok,
-        body: result
-      })
-
       if (!userResponse.ok) {
         throw new Error(result.error || 'Не удалось обновить пользователя')
       }
-
-      console.log('Server response:', result)
 
       // Обновление списка пользователей
       setUsers(prev => prev.map(u => 
@@ -227,8 +211,7 @@ export default function UserManagement() {
 
   const handleGroupSelectionChange = (keys: any) => {
     const selectedKeys = Array.from(keys)
-    console.log('Selected group keys:', selectedKeys)
-    
+
     const selectedGroups = groups
       .filter(group => selectedKeys.includes(group.key))
       .map(group => ({ 
@@ -237,7 +220,6 @@ export default function UserManagement() {
         code: group.code 
       }))
     
-    console.log('Selected groups:', selectedGroups)
     
     setCurrentUser(prev => ({ 
       ...prev, 
@@ -441,8 +423,6 @@ export default function UserManagement() {
         throw new Error(`HTTP error! status: ${groupsResponse.status}, message: ${await groupsResponse.text()}`)
       }
       
-      console.log('Detailed groups data:', JSON.stringify(groupsData, null, 2))
-      
       setGroups(groupsData.map((group: any) => ({
         key: group.id,
         label: group.name,
@@ -458,7 +438,6 @@ export default function UserManagement() {
         throw new Error(usersData.error || 'Не удалось загрузить пользователей')
       }
 
-      console.log('Detailed users data:', JSON.stringify(usersData, null, 2))
       
       // Map groups to users
       const usersWithGroups = usersData.map((user: User) => {
@@ -472,7 +451,6 @@ export default function UserManagement() {
             code: group.code || group.name
           }))
         
-        console.log(`Detailed groups for user ${user.name}:`, JSON.stringify(userGroups, null, 2))
         
         return {
           ...user,
@@ -480,7 +458,6 @@ export default function UserManagement() {
         }
       })
 
-      console.log('Detailed users with groups:', JSON.stringify(usersWithGroups, null, 2))
 
       setUsers(usersWithGroups)
     } catch (error) {
@@ -574,7 +551,6 @@ export default function UserManagement() {
                   <TableCell>
                     {user.groups && user.groups.length > 0 
                       ? user.groups.map(group => {
-                          console.log('Debug group:', JSON.stringify(group, null, 2))
                           return `${group.code || group.name || 'Без кода'}`
                         }).join(', ') 
                       : 'Нет групп'}

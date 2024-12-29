@@ -69,10 +69,6 @@ export async function PUT(
     // Parse the request body
     const body = await request.json()
     
-    console.log('Group update request:', { 
-      groupId,
-      body: JSON.stringify(body, null, 2)
-    })
 
     // Validate input
     const { 
@@ -145,10 +141,6 @@ export async function PUT(
           }
         })
 
-        console.log('Connected new curator:', {
-          curatorId,
-          groupId
-        })
       } else {
         groupUpdateData.curatorId = null
       }
@@ -166,7 +158,6 @@ export async function PUT(
       }
     })
 
-    console.log('Updated group:', JSON.stringify(updatedGroup, null, 2))
     
     return NextResponse.json({
       id: updatedGroup.id,
@@ -225,13 +216,6 @@ export async function DELETE(
         throw new Error('Группа не найдена')
       }
 
-      // Log group and curator details before deletion
-      console.log('Group deletion details:', {
-        groupId: group.id,
-        groupName: group.name,
-        curatorId: group.curator?.id,
-        curatorName: group.curator?.name
-      })
 
       // If the group has a curator, disconnect the group from the curator
       if (group.curator) {
@@ -243,20 +227,11 @@ export async function DELETE(
             }
           }
         })
-
-        console.log('Curator update result:', {
-          curatorId: curatorUpdateResult.id,
-          curatorName: curatorUpdateResult.name
-        })
       }
 
       // Delete all student models associated with the group
       const studentDeletionResult = await prisma.student.deleteMany({
         where: { groupId: groupId }
-      })
-
-      console.log('Student deletion result:', {
-        deletedStudentsCount: studentDeletionResult.count
       })
 
       // Finally, delete the group

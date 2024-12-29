@@ -65,7 +65,6 @@ export default function LoginPage() {
         password
       })
 
-      console.log('SignIn result:', result)
 
       if (result?.error) {
         toast.error('Ошибка входа', {
@@ -77,13 +76,15 @@ export default function LoginPage() {
 
       const session = await getSession()
 
-      if (session) {
+      if (session?.user) {
         const redirectUrl = session.user.role === 'ADMIN' 
           ? '/a/dashboard' 
           : '/curator/dashboard'
         
+        
         router.push(redirectUrl)
       } else {
+        console.error('No session or user found')
         toast.error('Ошибка авторизации', {
           description: 'Не удалось получить сессию'
         })

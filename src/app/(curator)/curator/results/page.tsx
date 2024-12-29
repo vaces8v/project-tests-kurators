@@ -79,10 +79,6 @@ export default function CuratorResults() {
     return 'success'
   }
 
-  const resetTestResult = (resultId: string) => {
-    // Implement test result reset logic
-    console.log(`Resetting test result for ID: ${resultId}`)
-  }
 
   return (
     <div className="bg-gradient-to-br from-blue-50 to-blue-100 dark:bg-gradient-to-br dark:from-gray-900 dark:to-gray-800 min-h-screen p-6">
@@ -152,7 +148,6 @@ export default function CuratorResults() {
                   <Button 
                     variant="light" 
                     color="primary"
-                    onPress={() => resetTestResult(result.id)}
                     className="text-gray-800 dark:text-white hover:text-blue-600"
                   >
                     Сбросить результат

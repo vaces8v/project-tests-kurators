@@ -133,9 +133,6 @@ export default function StudentManagementPage() {
       const newStudents = changedStudents.filter(student => !student.id || student.id.startsWith('new-'))
       const existingStudents = changedStudents.filter(student => student.id && !student.id.startsWith('new-'))
 
-      console.log('New Students:', JSON.stringify(newStudents, null, 2))
-      console.log('Existing Students:', JSON.stringify(existingStudents, null, 2))
-
       // Validate all students before sending
       changedStudents.forEach((student, index) => {
         const trimmedFirstName = student.firstName.trim()
@@ -164,16 +161,13 @@ export default function StudentManagementPage() {
           body: JSON.stringify(newStudentData)
         })
 
-        console.log('New Students Response Status:', newStudentsResponse.status)
 
         if (!newStudentsResponse.ok) {
           const errorData = await newStudentsResponse.text()
-          console.error('Create new students error:', errorData)
           throw new Error(`Не удалось создать новых студентов: ${errorData}`)
         }
 
         const newStudentsResult = await newStudentsResponse.json()
-        console.log('New Students Result:', JSON.stringify(newStudentsResult, null, 2))
         savePromises.push(Promise.resolve(newStudentsResult))
       }
 
@@ -184,7 +178,6 @@ export default function StudentManagementPage() {
           middleName: student.middleName?.trim() || null,
         }
 
-        console.log(`Updating student ${student.id}:`, JSON.stringify(studentData, null, 2))
 
         const response = await fetch(`/api/admin/groups/${groupId}/students/${student.id}`, {
           method: 'PUT',
@@ -195,7 +188,6 @@ export default function StudentManagementPage() {
           body: JSON.stringify(studentData)
         })
 
-        console.log(`Update Response Status for student ${student.id}:`, response.status)
 
         if (!response.ok) {
           const errorData = await response.text()
@@ -211,8 +203,6 @@ export default function StudentManagementPage() {
         ...updatePromises
       ])
       
-      console.log('Saved Students:', JSON.stringify(savedStudents, null, 2))
-
       toast.success('Изменения сохранены')
       setEditedRows({})
       
@@ -249,7 +239,6 @@ export default function StudentManagementPage() {
           }
         })
 
-        console.log('Updated Students:', JSON.stringify(updatedStudents, null, 2))
         return updatedStudents
       })
     } catch (error) {

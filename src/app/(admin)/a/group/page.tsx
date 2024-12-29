@@ -81,7 +81,6 @@ export default function GroupPage() {
         }
         
         const groupsData = await groupsResponse.json()
-        console.log('Fetched groups:', groupsData)
         
         // Validate that groupsData is an array
         if (!Array.isArray(groupsData)) {
@@ -114,13 +113,6 @@ export default function GroupPage() {
     // Найдем полную информацию о выбранном кураторе
     const selectedCurator = curators.find(c => c.id === selectedGroup.curatorId)
 
-    console.log('Preparing to create group:', {
-      code: selectedGroup.code,
-      name: selectedGroup.name,
-      curatorId: selectedGroup.curatorId,
-      curatorName: selectedCurator?.name
-    })
-
     try {
       const response = await fetch('/api/admin/groups', {
         method: 'POST',
@@ -141,23 +133,19 @@ export default function GroupPage() {
         })
       })
 
-      console.log('Create group response status:', response.status)
 
       let responseText = '';
       let newGroup = null;
 
       try {
         responseText = await response.text()
-        console.log('Raw response text:', responseText)
         
         // Only parse if there's content
         if (responseText.trim()) {
           newGroup = JSON.parse(responseText)
-          console.log('Parsed response body:', newGroup)
         }
       } catch (parseError) {
         console.error('Response parsing error:', parseError)
-        console.log('Unparseable response text:', responseText)
       }
 
       if (!response.ok) {
@@ -212,14 +200,6 @@ export default function GroupPage() {
     // Найдем полную информацию о выбранном кураторе
     const selectedCurator = curators.find(c => c.id === selectedGroup.curatorId)
 
-    console.log('Preparing to update group:', {
-      id: selectedGroup.id,
-      code: selectedGroup.code,
-      name: selectedGroup.name,
-      curatorId: selectedGroup.curatorId,
-      curatorName: selectedCurator?.name
-    })
-
     try {
       const updatePayload = {
         id: selectedGroup.id,
@@ -234,7 +214,6 @@ export default function GroupPage() {
         } : null
       }
 
-      console.log('Update payload:', updatePayload)
 
       const response = await fetch(`/api/admin/groups/${selectedGroup.id}`, {
         method: 'PUT',
@@ -245,8 +224,6 @@ export default function GroupPage() {
         body: JSON.stringify(updatePayload)
       })
 
-      console.log('Update response status:', response.status)
-
       // Check for non-200 status before attempting to parse
       if (!response.ok) {
         const errorText = await response.text()
@@ -255,8 +232,6 @@ export default function GroupPage() {
       }
 
       const updatedGroup = await response.json()
-
-      console.log('Update response body:', updatedGroup)
 
       // Обновляем список групп с новой информацией
       setGroups(prev => 
@@ -341,7 +316,7 @@ export default function GroupPage() {
   }
 
   const initiateGroupEdit = (group: GroupData) => {
-    console.log('Initiating group edit:', {
+    ({
       groupId: group.id,
       groupCode: group.code,
       currentCurator: group.curator,
@@ -456,14 +431,6 @@ export default function GroupPage() {
                     ? curators.find(c => c.id === group.curatorId) 
                     : undefined)
 
-                console.log('Group curator details:', {
-                  groupId: group.id,
-                  code: group.code,
-                  curatorId: group.curatorId,
-                  groupCurator: group.curator,
-                  curators: group.curators,
-                  resolvedCurator: curator
-                })
                 
                 return (
                   <TableRow key={group.id}>

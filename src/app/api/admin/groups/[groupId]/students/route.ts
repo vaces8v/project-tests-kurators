@@ -44,14 +44,8 @@ export async function POST(
   request: NextRequest, 
   { params }: { params: { groupId: string } }
 ) {
-  console.log('POST Request Started')
-  console.log('Full Request Headers:', Object.fromEntries(request.headers))
-  console.log('Group ID:', params.groupId)
 
   try {
-    // Ensure the request body is read correctly
-    const contentType = request.headers.get('content-type')
-    console.log('Content-Type:', contentType)
 
     let data;
     try {
@@ -68,7 +62,6 @@ export async function POST(
       )
     }
 
-    console.log('Parsed Request Body:', JSON.stringify(data, null, 2))
 
     // Validate group ID
     if (!params.groupId) {
@@ -84,7 +77,6 @@ export async function POST(
       // Support both single student and array of students
       const studentsData = Array.isArray(data) ? data : [data]
       
-      console.log('Students to Create:', JSON.stringify(studentsData, null, 2))
 
       // Validate each student
       const validatedStudents = studentsData.map(student => 
@@ -95,12 +87,9 @@ export async function POST(
         })
       )
 
-      console.log('Validated Students:', JSON.stringify(validatedStudents, null, 2))
-
       // Create students individually
       const createdStudents = await Promise.all(
         validatedStudents.map(async (student) => {
-          console.log('Creating student:', JSON.stringify(student, null, 2))
           try {
             return await prisma.student.create({
               data: {
@@ -117,7 +106,6 @@ export async function POST(
         })
       )
 
-      console.log('Created Students:', JSON.stringify(createdStudents, null, 2))
 
       return NextResponse.json(createdStudents)
     } catch (validationError) {
@@ -164,8 +152,6 @@ export async function PUT(
   { params }: { params: { groupId: string, studentId: string } }
 ) {
   try {
-    console.log('PUT Request Method')
-    console.log('Group ID:', params.groupId)
 
     // Read request body
     let data;
@@ -179,7 +165,6 @@ export async function PUT(
       )
     }
 
-    console.log('Parsed Request Body:', JSON.stringify(data, null, 2))
 
     // Validate student data
     const studentId = params.studentId
@@ -208,7 +193,6 @@ export async function PUT(
       }
     })
 
-    console.log('Updated Student:', JSON.stringify(updatedStudent, null, 2))
 
     return NextResponse.json(updatedStudent)
   } catch (error) {

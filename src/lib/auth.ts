@@ -40,7 +40,9 @@ export const authOptions: NextAuthOptions = {
   jwt: {
     maxAge: 30 * 24 * 60 * 60, // 30 days
   },
-
+  session: {
+    strategy: 'jwt', // Explicitly set JWT strategy
+  },
   providers: [
     CredentialsProvider({
       name: 'Credentials',
@@ -49,50 +51,47 @@ export const authOptions: NextAuthOptions = {
         password: { label: "Password", type: "password" }
       },
       async authorize(credentials) {
+        
         if (!credentials?.login || !credentials?.password) {
           return null
         }
 
-        // Hardcoded admin check
-        if (credentials.login === 'admin' && credentials.password === '6676') {
-          return {
-            id: 'admin-user-id',
-            login: 'admin',
-            email: 'admin@formsite.com',
-            name: 'Admin User',
-            role: 'ADMIN'
+        try {
+          const user = await prisma.user.findUnique({
+            where: { login: credentials.login }
+          })
+
+
+          if (!user) {
+            return null
           }
-        }
 
-        const user = await prisma.user.findUnique({
-          where: { login: credentials.login }
-        })
+          const isPasswordCorrect = await bcrypt.compare(
+            credentials.password, 
+            user.password
+          )
 
-        if (!user) {
+          if (!isPasswordCorrect) {
+            return null
+          }
+
+          return {
+            id: user.id,
+            login: user.login,
+            email: user.email,
+            name: user.name,
+            role: user.role
+          }
+        } catch (error) {
+          console.error('Authorization error:', error)
           return null
-        }
-
-        const isPasswordValid = await bcrypt.compare(
-          credentials.password, 
-          user.password
-        )
-
-        if (!isPasswordValid) {
-          return null
-        }
-
-        return {
-          id: user.id,
-          login: user.login,
-          email: user.email,
-          name: user.name,
-          role: user.role
         }
       }
     })
   ],
   callbacks: {
     async jwt({ token, user }) {
+      
       if (user) {
         token.role = user.role
         token.login = user.login
@@ -101,9 +100,15 @@ export const authOptions: NextAuthOptions = {
       return token
     },
     async session({ session, token }) {
+      
       session.user.role = token.role as string
       session.user.login = token.login as string
       session.user.id = token.id as string
+      
+      if (!session.user.role) {
+        session.user.role = token.role as string
+      }
+      
       return session
     }
   },

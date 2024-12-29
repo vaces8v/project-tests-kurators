@@ -62,8 +62,6 @@ export default function CuratorStudents() {
           credentials: 'include'
         })
 
-        console.log('Response status:', response.status)
-        console.log('Response headers:', Object.fromEntries(response.headers.entries()))
         
         if (!response.ok) {
           const errorText = await response.text()
@@ -72,7 +70,6 @@ export default function CuratorStudents() {
         }
 
         const data = await response.json()
-        console.log('Fetched groups:', data)
         setGroups(data)
 
         // Improved group selection logic
@@ -105,12 +102,8 @@ export default function CuratorStudents() {
           ? (selectedGroup as Group).id 
           : selectedGroup
 
-        console.log('Fetching students for group:', groupId) // Debug log
 
         const response = await fetch(`/api/curator/groups/${groupId}/students`)
-        
-        console.log('Response status:', response.status) // Debug log
-        console.log('Response headers:', Object.fromEntries(response.headers.entries())) // Debug log
 
         let errorDetails = null
         if (!response.ok) {
@@ -132,7 +125,6 @@ export default function CuratorStudents() {
         }
         
         const data = await response.json()
-        console.log('Fetched students:', data) // Debug log
         
         setStudents(data)
       } catch (error) {
@@ -312,7 +304,6 @@ export default function CuratorStudents() {
             selectedKeys={selectedGroup ? [selectedGroup] : []}
             onSelectionChange={(keys) => {
               const selectedKey = Array.from(keys)[0] as string
-              console.log('Selected group:', selectedKey)
               setSelectedGroup(selectedKey)
             }}
           >

@@ -8,15 +8,6 @@ const prisma = new PrismaClient()
 // Diagnostic function to log session details
 async function logSessionDetails() {
   const session = await getServerSession(authOptions)
-  console.log('Detailed Session Diagnostics:', {
-    sessionExists: !!session,
-    userId: session?.user?.id,
-    role: session?.user?.role,
-    login: session?.user?.login,
-    email: session?.user?.email,
-    name: session?.user?.name,
-    // Add more details as needed
-  })
   return session
 }
 
@@ -25,14 +16,6 @@ export async function GET(
   { params }: { params: { groupId: string } }
 ) {
   try {
-    // Log full request details
-    console.log('Incoming Request Details:', {
-      method: request.method,
-      url: request.url,
-      headers: Object.fromEntries(request.headers.entries()),
-      params: params
-    })
-
     const session = await getServerSession(authOptions)
     
     // Comprehensive session validation
@@ -124,12 +107,6 @@ export async function GET(
           }
         }
       }
-    })
-
-    console.log(`Student Fetch Results:`, {
-      groupId,
-      studentCount: students.length,
-      studentIds: students.map(s => s.id)
     })
 
     // Transform students to match the expected interface
