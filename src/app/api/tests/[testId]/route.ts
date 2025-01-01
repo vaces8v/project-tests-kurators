@@ -239,3 +239,61 @@ export async function PUT(
     return new NextResponse('Unexpected error occurred during test update', { status: 500 })
   }
 }
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: { testId: string } }
+) {
+  try {
+    const session = await getServerSession(authOptions)
+    if (!session) {
+      return new NextResponse('Unauthorized', { status: 401 })
+    }
+
+    const testId = params.testId
+
+    // Delete test in a transaction to handle related records
+    const deletedTest = await prisma.$transaction(async (tx) => {
+      // First, delete test assignments
+      await tx.testAssignment.deleteMany({
+        where: { testId }
+      })
+
+      // Delete test results
+      await tx.testResult.deleteMany({
+        where: { testId }
+      })
+
+      // Delete question options first
+      await tx.questionOption.deleteMany({
+        where: { question: { testId } }
+      })
+
+      // Delete questions
+      await tx.question.deleteMany({
+        where: { testId }
+      })
+
+      // Finally, delete the test
+      return tx.test.delete({
+        where: { id: testId }
+      })
+    })
+
+    return NextResponse.json({ 
+      message: 'Test deleted successfully', 
+      deletedTest 
+    }, { status: 200 })
+  } catch (error) {
+    console.error('Error deleting test:', error)
+    
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      // The .code property can be accessed in a type-safe manner
+      if (error.code === 'P2025') {
+        return new NextResponse('Test not found', { status: 404 })
+      }
+    }
+
+    return new NextResponse('Internal Server Error', { status: 500 })
+  }
+}
