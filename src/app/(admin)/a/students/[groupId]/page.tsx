@@ -312,7 +312,7 @@ export default function StudentManagementPage() {
       return [...prev, ...parsedStudents]
     })
 
-    toast.success(`Вставлено ${parsedStudents.length} строк из Excel`)
+    toast.success(`Вставлено ${parsedStudents.length} строк`)
   }, [])
 
   const handleDeleteRow = async (index: number) => {

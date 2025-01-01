@@ -51,6 +51,7 @@ export default function TestTakePage() {
   const [responses, setResponses] = useState<{[key: string]: string[]}>({})
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isStarted, setIsStarted] = useState(false)
 
   useEffect(() => {
     async function fetchTestDetails() {
@@ -128,68 +129,129 @@ export default function TestTakePage() {
       <Card>
         <CardHeader>
           <h1 className="text-2xl font-bold">{testAssignment.test.title}</h1>
+          {testAssignment.test.description && (
+            <p className="text-gray-600 mt-2">{testAssignment.test.description}</p>
+          )}
         </CardHeader>
         <CardBody>
-          {testAssignment.students && (
-            <Select
-              label="Select Student"
-              placeholder="Choose a student"
-              value={selectedStudent}
-              onChange={(e) => setSelectedStudent(e.target.value)}
-            >
-              {testAssignment.students.map((student) => (
-                <SelectItem key={student.id} value={student.id}>
-                  {student.firstName} {student.lastName}
-                </SelectItem>
-              ))}
-            </Select>
-          )}
+          {!isStarted ? (
+            <div className="space-y-4">
+              <div className="bg-blue-50 p-4 rounded-lg">
+                <h2 className="text-lg font-semibold mb-2">Instructions</h2>
+                <ul className="list-disc list-inside space-y-1 text-sm">
+                  <li>Select your name from the list below</li>
+                  <li>Once you start the test, you cannot pause it</li>
+                  <li>Answer all questions carefully</li>
+                  <li>You can navigate between questions using the Previous and Next buttons</li>
+                  <li>Submit your test only when you have reviewed all answers</li>
+                </ul>
+              </div>
 
-          {testAssignment.test.questions[currentQuestionIndex] && (
-            <div className="mt-4">
-              <h2 className="text-xl mb-2">
-                {testAssignment.test.questions[currentQuestionIndex].text}
-              </h2>
-              <RadioGroup
-                value={responses[testAssignment.test.questions[currentQuestionIndex].id]?.[0] ?? ''}
-                onValueChange={(value) => 
-                  handleResponseChange(
-                    testAssignment.test.questions[currentQuestionIndex].id, 
-                    value
-                  )
-                }
+              <Select
+                label="Select Your Name"
+                placeholder="Choose your name from the list"
+                value={selectedStudent}
+                onChange={(e) => setSelectedStudent(e.target.value)}
+                className="max-w-md"
               >
-                {testAssignment.test.questions[currentQuestionIndex].options?.map((option) => (
-                  <Radio key={option.id} value={option.id}>
-                    {option.text}
-                  </Radio>
-                ))}
-              </RadioGroup>
+                {testAssignment.students?.map((student) => (
+                  <SelectItem key={student.id} value={student.id}>
+                    {student.firstName} {student.lastName} {student.middleName ? `${student.middleName} ` : ''}
+                  </SelectItem>
+                )) || []}
+              </Select>
 
-              <div className="flex justify-between mt-4">
-                {currentQuestionIndex > 0 && (
+              <Button 
+                color="primary"
+                className="w-full max-w-md"
+                onPress={() => {
+                  if (!selectedStudent) {
+                    toast.error('Please select your name before starting')
+                    return
+                  }
+                  setIsStarted(true)
+                }}
+              >
+                Start Test
+              </Button>
+            </div>
+          ) : (
+            <div className="mt-4">
+              <div className="mb-4 flex justify-between items-center">
+                <span className="text-sm text-gray-600">
+                  Question {currentQuestionIndex + 1} of {testAssignment.test.questions.length}
+                </span>
+                <span className="text-sm text-gray-600">
+                  Progress: {Math.round(((currentQuestionIndex + 1) / testAssignment.test.questions.length) * 100)}%
+                </span>
+              </div>
+
+              <div className="bg-white p-4 rounded-lg shadow-sm">
+                <h2 className="text-xl mb-4">
+                  {testAssignment.test.questions[currentQuestionIndex].text}
+                </h2>
+                
+                {testAssignment.test.questions[currentQuestionIndex].type === 'TEXT' ? (
+                  <textarea
+                    className="w-full p-2 border rounded-lg"
+                    rows={4}
+                    value={responses[testAssignment.test.questions[currentQuestionIndex].id]?.[0] ?? ''}
+                    onChange={(e) => handleResponseChange(
+                      testAssignment.test.questions[currentQuestionIndex].id,
+                      e.target.value
+                    )}
+                    placeholder="Enter your answer here..."
+                  />
+                ) : (
+                  <RadioGroup
+                    value={responses[testAssignment.test.questions[currentQuestionIndex].id]?.[0] ?? ''}
+                    onValueChange={(value) => 
+                      handleResponseChange(
+                        testAssignment.test.questions[currentQuestionIndex].id, 
+                        value
+                      )
+                    }
+                    className="space-y-2"
+                  >
+                    {testAssignment.test.questions[currentQuestionIndex].options?.map((option) => (
+                      <Radio key={option.id} value={option.id} className="p-2">
+                        {option.text}
+                      </Radio>
+                    ))}
+                  </RadioGroup>
+                )}
+
+                <div className="flex justify-between mt-6">
                   <Button 
-                    onClick={() => setCurrentQuestionIndex(prev => prev - 1)}
+                    variant="flat"
+                    onPress={() => setCurrentQuestionIndex(prev => prev - 1)}
+                    isDisabled={currentQuestionIndex === 0}
                   >
                     Previous
                   </Button>
-                )}
-                {currentQuestionIndex < testAssignment.test.questions.length - 1 ? (
-                  <Button 
-                    onClick={() => setCurrentQuestionIndex(prev => prev + 1)}
-                  >
-                    Next
-                  </Button>
-                ) : (
-                  <Button 
-                    color="primary" 
-                    onClick={submitTest}
-                    isLoading={isSubmitting}
-                    isDisabled={!selectedStudent}
-                  >
-                    Submit Test
-                  </Button>
-                )}
+                  
+                  {currentQuestionIndex < testAssignment.test.questions.length - 1 ? (
+                    <Button 
+                      color="primary"
+                      onPress={() => setCurrentQuestionIndex(prev => prev + 1)}
+                      isDisabled={!responses[testAssignment.test.questions[currentQuestionIndex].id]}
+                    >
+                      Next
+                    </Button>
+                  ) : (
+                    <Button 
+                      color="success"
+                      onPress={submitTest}
+                      isLoading={isSubmitting}
+                      isDisabled={
+                        !Object.keys(responses).length || 
+                        Object.keys(responses).length !== testAssignment.test.questions.length
+                      }
+                    >
+                      Submit Test
+                    </Button>
+                  )}
+                </div>
               </div>
             </div>
           )}

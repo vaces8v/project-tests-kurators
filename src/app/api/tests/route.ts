@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { PrismaClient } from '@prisma/client'
+import { PrismaClient, UserRole } from '@prisma/client'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 
@@ -56,10 +56,10 @@ export async function POST(request: Request) {
   try {
     const session = await getServerSession(authOptions)
     
-    if (!session || session.user.role !== 'ADMIN') {
+    if (!session || !['ADMIN', 'CURATOR'].includes(session.user.role)) {
       return NextResponse.json({ 
         error: 'Unauthorized', 
-        details: 'Only admin users can create tests'
+        details: 'Only admin and curator users can create tests'
       }, { status: 403 })
     }
 
@@ -72,20 +72,26 @@ export async function POST(request: Request) {
       select: { 
         id: true, 
         name: true, 
-        role: true 
+        role: true,
+        curatedGroups: {
+          select: {
+            id: true
+          }
+        }
       }
     })
 
-    // If user not found in database but is admin, create a placeholder
-    if (!user && session.user.role === 'ADMIN') {
+    // If user not found in database but is admin/curator, create a placeholder
+    if (!user && ['ADMIN', 'CURATOR'].includes(session.user.role)) {
       user = {
         id: session.user.id,
-        name: session.user.name || 'Admin User',
-        role: 'ADMIN'
+        name: session.user.name || 'User',
+        role: session.user.role as UserRole,
+        curatedGroups: []
       }
     }
 
-    // If no user found and not admin, throw unauthorized error
+    // If no user found and not admin/curator, throw unauthorized error
     if (!user) {
       return NextResponse.json({ 
         error: 'User not found', 
@@ -145,12 +151,20 @@ export async function POST(request: Request) {
     // Comprehensive group validation
     let validatedGroups: any[] = []
     if (assignedGroups && assignedGroups.length > 0) {
+      // For curators, only allow assigning to their own groups
+      const groupQuery = {
+        where: session.user.role === 'CURATOR' 
+          ? {
+              id: { in: assignedGroups },
+              curatorId: session.user.id
+            }
+          : {
+              id: { in: assignedGroups }
+            }
+      }
+
       validatedGroups = await prisma.group.findMany({
-        where: {
-          id: {
-            in: assignedGroups
-          }
-        },
+        where: groupQuery.where,
         select: { 
           id: true, 
           name: true, 

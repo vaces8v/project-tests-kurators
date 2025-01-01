@@ -29,7 +29,7 @@ interface Test {
   id: string
   title: string
   description?: string
-  questions: number
+  questions: Question[]
   assignedGroups?: string[]
 }
 
@@ -68,6 +68,8 @@ const DEFAULT_CURATOR: Curator = {
 export default function TestsManagement() {
   const [tests, setTests] = useState<Test[]>([])
   const [groups, setGroups] = useState<Group[]>([])
+  const [isEditing, setIsEditing] = useState(false)
+  const [editingTestId, setEditingTestId] = useState<string | null>(null)
   const [newTest, setNewTest] = useState<{
     title: string
     description: string
@@ -98,6 +100,27 @@ export default function TestsManagement() {
     options: [{ text: '', score: 0 }]
   })
 
+  const [testToDelete, setTestToDelete] = useState<Test | null>(null)
+
+  const { 
+    isOpen: isDeleteConfirmationOpen, 
+    onOpen: onDeleteConfirmationOpen, 
+    onOpenChange: onDeleteConfirmationOpenChange 
+  } = useDisclosure()
+
+  const confirmDeleteTest = (test: Test) => {
+    setTestToDelete(test)
+    onDeleteConfirmationOpen()
+  }
+
+  const handleDeleteTest = async () => {
+    if (!testToDelete) return
+
+    await deleteTest(testToDelete.id)
+    setTestToDelete(null)
+    onDeleteConfirmationOpenChange()
+  }
+
   useEffect(() => {
     // Fetch tests
     const fetchTests = async () => {
@@ -115,7 +138,7 @@ export default function TestsManagement() {
     // Fetch groups
     const fetchGroups = async () => {
       try {
-        const response = await fetch('/api/groups')
+        const response = await fetch('/api/admin/groups')
         const data = await response.json()
         setGroups(data)
       } catch (error) {
@@ -260,6 +283,171 @@ export default function TestsManagement() {
     }
   }
 
+  const editTest = async (test: Test) => {
+    try {
+      // Fetch full test data including questions
+      const response = await fetch(`/api/tests/${test.id}`)
+      if (!response.ok) {
+        throw new Error('Failed to fetch test details')
+      }
+      const fullTest = await response.json()
+      
+      setIsEditing(true)
+      setEditingTestId(test.id)
+      setNewTest({
+        title: fullTest.title,
+        description: fullTest.description || '',
+        questions: fullTest.questions || [],
+        assignedGroups: fullTest.assignedGroups || []
+      })
+      onTestModalOpen()
+    } catch (error) {
+      toast.error('Failed to load test details', {
+        description: error instanceof Error ? error.message : String(error)
+      })
+    }
+  }
+
+  const updateTest = async () => {
+    try {
+      if (!editingTestId) return
+
+      // Validate required fields
+      if (!newTest.title) {
+        toast.error('Test title is required')
+        return
+      }
+
+      // Validate questions
+      if (!newTest.questions || newTest.questions.length === 0) {
+        toast.error('At least one question is required')
+        return
+      }
+
+      // Validate questions (same validation as in createTest)
+      const validatedQuestions = newTest.questions.map((q, index) => {
+        if (!q.text) {
+          throw new Error(`Question ${index + 1} is missing text`)
+        }
+
+        if (!['SINGLE_CHOICE', 'MULTIPLE_CHOICE', 'TEXT'].includes(q.type)) {
+          throw new Error(`Invalid question type for question ${index + 1}`)
+        }
+
+        if (q.type !== 'TEXT') {
+          if (!q.options || q.options.length === 0) {
+            throw new Error(`Question ${index + 1} must have at least one option`)
+          }
+
+          q.options.forEach((opt, optIndex) => {
+            if (!opt.text) {
+              throw new Error(`Option ${optIndex + 1} in question ${index + 1} is missing text`)
+            }
+          })
+        }
+
+        return {
+          // Preserve existing ID if present
+          ...(q.id ? { id: q.id } : {}),
+          text: q.text,
+          type: q.type,
+          options: q.type !== 'TEXT' ? 
+            q.options.filter(opt => opt.text.trim() !== '').map(opt => ({
+              // Preserve existing option ID if present
+              ...(opt.id ? { id: opt.id } : {}),
+              text: opt.text,
+              score: opt.score || 0
+            })) : 
+            []
+        }
+      })
+
+      const payload = {
+        title: newTest.title,
+        description: newTest.description || '',
+        questions: validatedQuestions,
+        testAssignments: newTest.assignedGroups || []
+      }
+
+      // Debug logging
+      console.log('Sending update payload:', JSON.stringify(payload, null, 2))
+
+      const response = await fetch(`/api/tests/${editingTestId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      })
+
+      if (!response.ok) {
+        const errorText = await response.text()
+        console.error('Server error response:', errorText)
+        
+        toast.error('Test Update Failed', {
+          description: `Server responded with status ${response.status}: ${errorText}`,
+          duration: 5000
+        })
+        return
+      }
+
+      const updatedTest = await response.json()
+
+      setTests(prev => prev.map(t => t.id === editingTestId ? updatedTest : t))
+      resetForm()
+      onTestModalOpenChange()
+      toast.success('Test updated successfully')
+    } catch (error) {
+      console.error('Unexpected error during test update:', error)
+      
+      toast.error('Test Update Failed', {
+        description: error instanceof Error ? error.message : String(error),
+        duration: 5000
+      })
+    }
+  }
+
+  const deleteTest = async (testId: string) => {
+    try {
+      const response = await fetch(`/api/tests/${testId}`, {
+        method: 'DELETE'
+      })
+
+      if (!response.ok) {
+        const errorText = await response.text()
+        console.error('Server error response:', errorText)
+        
+        toast.error('Test Deletion Failed', {
+          description: `Server responded with status ${response.status}: ${errorText}`,
+          duration: 5000
+        })
+        return
+      }
+
+      // Remove the deleted test from the list
+      setTests(prev => prev.filter(test => test.id !== testId))
+      toast.success('Test deleted successfully')
+    } catch (error) {
+      console.error('Unexpected error during test deletion:', error)
+      
+      toast.error('Test Deletion Failed', {
+        description: error instanceof Error ? error.message : String(error),
+        duration: 5000
+      })
+    }
+  }
+
+  const resetForm = () => {
+    setNewTest({
+      title: '',
+      description: '',
+      questions: [],
+      assignedGroups: []
+    })
+    setIsEditing(false)
+    setEditingTestId(null)
+  }
+
   const containerVariants = {
     hidden: { opacity: 0, scale: 0.95 },
     visible: { 
@@ -327,7 +515,7 @@ export default function TestsManagement() {
                     <span className="font-semibold">{test.title}</span>
                   </TableCell>
                   <TableCell className="hidden sm:table-cell">{test.description || '-'}</TableCell>
-                  <TableCell className="hidden sm:table-cell">{test.questions}</TableCell>
+                  <TableCell className="hidden sm:table-cell">{test.questions.length}</TableCell>
                   <TableCell className="hidden sm:table-cell">
                     {Array.isArray(test.assignedGroups) ? test.assignedGroups.join(', ') : '-'}
                   </TableCell>
@@ -338,6 +526,7 @@ export default function TestsManagement() {
                         size="sm" 
                         variant="light"
                         className="text-gray-800 dark:text-white hover:text-blue-600 dark:hover:text-blue-400"
+                        onPress={() => editTest(test)}
                       >
                         <Edit size={16} />
                       </Button>
@@ -347,6 +536,7 @@ export default function TestsManagement() {
                         variant="light" 
                         color="danger"
                         className="text-gray-800 dark:text-white hover:text-red-600 dark:hover:text-red-400"
+                        onPress={() => confirmDeleteTest(test)}
                       >
                         <Trash2 size={16} />
                       </Button>
@@ -371,7 +561,7 @@ export default function TestsManagement() {
           {(onClose) => (
             <>
               <ModalHeader className="text-gray-800 dark:text-white text-md sm:text-lg">
-                Создание теста
+                {isEditing ? 'Редактирование теста' : 'Создание теста'}
               </ModalHeader>
               <ModalBody className="space-y-4">
                 <Input
@@ -490,11 +680,11 @@ export default function TestsManagement() {
                 </Button>
                 <Button 
                   color="primary" 
-                  onPress={createTest}
+                  onPress={isEditing ? updateTest : createTest}
                   size="sm"
                   isDisabled={!newTest.title || newTest.questions.length === 0}
                 >
-                  Создать тест
+                  {isEditing ? 'Сохранить изменения' : 'Создать тест'}
                 </Button>
               </ModalFooter>
             </>
@@ -628,6 +818,47 @@ export default function TestsManagement() {
                       currentQuestion.options.some(opt => !opt.text)))}
                 >
                   Добавить вопрос
+                </Button>
+              </ModalFooter>
+            </>
+          )}
+        </ModalContent>
+      </Modal>
+
+      {/* Test Deletion Confirmation Modal */}
+      <Modal 
+        isOpen={isDeleteConfirmationOpen}
+        backdrop='blur'
+        onOpenChange={onDeleteConfirmationOpenChange}
+        className="text-gray-800 dark:text-white"
+      >
+        <ModalContent>
+          {(onClose) => (
+            <>
+              <ModalHeader className="text-gray-800 dark:text-white text-md sm:text-lg">
+                Подтверждение удаления теста
+              </ModalHeader>
+              <ModalBody>
+                <p>Вы уверены, что хотите удалить тест "{testToDelete?.title}"?</p>
+                <p className="text-sm text-red-500">
+                  Внимание: Это действие приведет к безвозвратному удалению теста, всех его вопросов и результатов.
+                </p>
+              </ModalBody>
+              <ModalFooter>
+                <Button 
+                  color="default" 
+                  variant="light" 
+                  onPress={onClose}
+                  size="sm"
+                >
+                  Отмена
+                </Button>
+                <Button 
+                  color="danger" 
+                  onPress={handleDeleteTest}
+                  size="sm"
+                >
+                  Удалить
                 </Button>
               </ModalFooter>
             </>
