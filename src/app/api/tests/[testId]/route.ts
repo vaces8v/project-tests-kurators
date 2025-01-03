@@ -92,6 +92,11 @@ export async function PUT(
             groupId: group.id
           }))
         })
+      } else {
+        // If no groups are provided, explicitly remove all existing assignments
+        await tx.testAssignment.deleteMany({
+          where: { testId }
+        })
       }
 
       // Manage questions
