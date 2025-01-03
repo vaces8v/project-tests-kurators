@@ -16,6 +16,7 @@ import {
 import { Card, CardBody, CardHeader } from "@nextui-org/card"
 import { Button } from "@nextui-org/button"
 import { toast } from 'sonner'
+import { Modal, ModalContent, ModalHeader, ModalBody, ModalFooter } from "@nextui-org/modal"
 
 interface TestResult {
   id: string
@@ -45,7 +46,7 @@ export default function TestResultsPage() {
   const [groups, setGroups] = useState<{id: string, name: string}[]>([])
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null)
   const [testResults, setTestResults] = useState<TestResult[]>([])
-  const [selectedResult, setSelectedResult] = useState<TestResult | null>(null)
+  const [resultToReset, setResultToReset] = useState<{id: string, studentName: string} | null>(null)
 
   // Fetch groups
   useEffect(() => {
@@ -54,11 +55,12 @@ export default function TestResultsPage() {
         const res = await fetch('/api/curator/groups')
         const data = await res.json()
         setGroups(data)
+        // Set the first group as default
         if (data.length > 0) {
           setSelectedGroup(data[0].id)
         }
       } catch (error) {
-        toast.error('Failed to load groups')
+        toast.error('Не удалось загрузить группы')
       }
     }
     fetchGroups()
@@ -74,25 +76,49 @@ export default function TestResultsPage() {
         const data = await res.json()
         setTestResults(data)
       } catch (error) {
-        toast.error('Failed to load test results')
+        toast.error('Не удалось загрузить результаты тестов')
       }
     }
     fetchTestResults()
   }, [selectedGroup])
 
+  // Reset test result
+  const handleResetResult = async () => {
+    if (!resultToReset) return
+
+    try {
+      const res = await fetch(`/api/curator/test-results/${resultToReset.id}`, {
+        method: 'DELETE'
+      })
+
+      if (res.ok) {
+        // Remove the result from the list
+        setTestResults(prevResults => 
+          prevResults.filter(result => result.id !== resultToReset.id)
+        )
+        toast.success('Результат теста сброшен')
+        setResultToReset(null)
+      } else {
+        toast.error('Не удалось сбросить результат')
+      }
+    } catch (error) {
+      toast.error('Произошла ошибка при сбросе результата')
+    }
+  }
+
   const renderStudentName = (student: TestResult['student']) => 
-    `${student.lastName} ${student.firstName} ${student.middleName || ''}`
+    `${student.lastName} ${student.firstName} ${student.middleName || ''}`.trim()
 
   return (
     <div className="container mx-auto p-4">
       <Card>
         <CardHeader>
-          <h2>Test Results</h2>
+          <h2>Результаты Тестов</h2>
         </CardHeader>
         <CardBody>
           {/* Group Selection */}
           <div className="mb-4">
-            <label className="block mb-2">Select Group</label>
+            <label className="block mb-2">Выберите Группу</label>
             <Select 
               value={selectedGroup || undefined} 
               onChange={(e) => setSelectedGroup(e.target.value)}
@@ -107,19 +133,19 @@ export default function TestResultsPage() {
 
           {/* Test Results Table */}
           <Table 
-            aria-label="Test Results Table"
+            aria-label="Таблица Результатов Тестов"
             selectionMode="single"
           >
             <TableHeader>
-              <TableColumn key="student">Student</TableColumn>
-              <TableColumn key="test">Test</TableColumn>
-              <TableColumn key="score">Score</TableColumn>
-              <TableColumn key="completedAt">Completed At</TableColumn>
-              <TableColumn key="actions">Actions</TableColumn>
+              <TableColumn key="student">Студент</TableColumn>
+              <TableColumn key="test">Тест</TableColumn>
+              <TableColumn key="score">Оценка</TableColumn>
+              <TableColumn key="completedAt">Дата Завершения</TableColumn>
+              <TableColumn key="actions">Действия</TableColumn>
             </TableHeader>
             <TableBody 
               items={testResults}
-              emptyContent="No test results found"
+              emptyContent="Результаты тестов не найдены"
             >
               {(result) => (
                 <TableRow key={result.id}>
@@ -131,73 +157,65 @@ export default function TestResultsPage() {
                   </TableCell>
                   <TableCell>
                     <Button 
+                      color="danger"
                       variant='flat'
-                      onPress={() => setSelectedResult(result)}
+                      onPress={() => setResultToReset({
+                        id: result.id, 
+                        studentName: renderStudentName(result.student)
+                      })}
                     >
-                      View Details
+                      Сбросить результат
                     </Button>
                   </TableCell>
                 </TableRow>
               )}
             </TableBody>
           </Table>
-
-          {/* Detailed Result Modal */}
-          {selectedResult && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
-              <Card className="w-[600px] max-h-[80vh] overflow-y-auto">
-                <CardHeader>
-                  <h2>
-                    Test Result Details for {renderStudentName(selectedResult.student)}
-                  </h2>
-                </CardHeader>
-                <CardBody>
-                  <div className="mb-4">
-                    <strong>Test:</strong> {selectedResult.test.title}
-                  </div>
-                  <div className="mb-4">
-                    <strong>Total Score:</strong> {selectedResult.totalScore.toFixed(2)}
-                  </div>
-                  <div className="mb-4">
-                    <strong>Completed At:</strong> {new Date(selectedResult.completedAt).toLocaleString()}
-                  </div>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableColumn>Question</TableColumn>
-                        <TableColumn>Response</TableColumn>
-                        <TableColumn>Score</TableColumn>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {selectedResult.responses.map(response => (
-                        <TableRow key={response.id}>
-                          <TableCell>{response.question.text}</TableCell>
-                          <TableCell>
-                            {response.selectedOption 
-                              ? (typeof response.selectedOption === 'string' 
-                                  ? response.selectedOption 
-                                  : JSON.stringify(response.selectedOption))
-                              : 'No response'}
-                          </TableCell>
-                          <TableCell>{response.score.toFixed(2)}</TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                  <Button 
-                    className="mt-4" 
-                    variant='flat'
-                    onPress={() => setSelectedResult(null)}
-                  >
-                    Close
-                  </Button>
-                </CardBody>
-              </Card>
-            </div>
-          )}
         </CardBody>
       </Card>
+
+      {/* Confirmation Modal */}
+      <Modal 
+        isOpen={!!resultToReset} 
+        onOpenChange={() => setResultToReset(null)}
+        placement="center"
+      >
+        <ModalContent>
+          {(onClose) => (
+            <>
+              <ModalHeader className="flex flex-col gap-1">
+                Подтверждение сброса результата
+              </ModalHeader>
+              <ModalBody>
+                <p>
+                  Вы уверены, что хотите сбросить результат теста для студента 
+                  <strong> {resultToReset?.studentName}</strong>?
+                </p>
+                <p className="text-sm text-warning">
+                  Это действие нельзя будет отменить.
+                </p>
+              </ModalBody>
+              <ModalFooter>
+                <Button 
+                  variant="light" 
+                  onPress={onClose}
+                >
+                  Отмена
+                </Button>
+                <Button 
+                  color="danger" 
+                  onPress={() => {
+                    handleResetResult()
+                    onClose()
+                  }}
+                >
+                  Сбросить
+                </Button>
+              </ModalFooter>
+            </>
+          )}
+        </ModalContent>
+      </Modal>
     </div>
   )
 }

@@ -113,14 +113,6 @@ export default function TestCompletedPage() {
           >
             На главную
           </Button>
-          <Button 
-            color="secondary" 
-            variant="bordered"
-            onPress={() => router.push('/dashboard')}
-            className="px-6 py-3"
-          >
-            Личный кабинет
-          </Button>
         </div>
       </motion.div>
 
