@@ -77,10 +77,15 @@ export default function TestTakePage() {
           const testResponse = await fetch(`/api/tests/${linkId}`)
           const testData = await testResponse.json()
 
+          // Fetch students for the test's assigned groups
+          const studentsResponse = await fetch(`/api/students?groupCodes=${testData.assignedGroups.join(',')}`)
+          const studentsData = await studentsResponse.json()
+
           // Ensure we have a valid test assignment structure
           setTestAssignment({
-            test: testData.test || testData,
-            students: testData.students || []
+            test: testData,
+            students: studentsData,
+            group: testData.testAssignments?.[0]?.group
           })
         }
       } catch (error) {
