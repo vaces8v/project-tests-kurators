@@ -124,7 +124,7 @@ export default function TestTakePage() {
 
     setIsSubmitting(true)
     try {
-      const response = await fetch('/api/test-results', {
+      const response = await fetch('/api/v2/test-results', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
