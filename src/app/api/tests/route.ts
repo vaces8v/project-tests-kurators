@@ -22,24 +22,24 @@ export async function GET() {
         authorId: session.user.id
       },
       include: {
-        _count: {
-          select: { questions: true, testAssignments: true }
-        },
+        questions: true, // Включаем вопросы
         testAssignments: {
-          select: {
-            groupId: true
+          include: {
+            group: true // Включаем группы
           }
         }
       }
     })
 
-    // Transform tests to include assignedGroups
+    // Трансформируем тесты
     const transformedTests = tests.map(test => ({
       id: test.id,
       title: test.title,
       description: test.description || '',
-      questions: test._count.questions,
-      assignedGroups: test.testAssignments.map(assignment => assignment.groupId)
+      questions: test.questions, // Массив вопросов
+      assignedGroups: test.testAssignments.map(
+        assignment => assignment.group.code // Код группы
+      )
     }))
 
     return NextResponse.json(transformedTests)

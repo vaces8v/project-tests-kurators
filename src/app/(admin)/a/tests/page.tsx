@@ -49,6 +49,7 @@ interface QuestionOption {
 interface Group {
   id: string
   name: string
+  code: string
 }
 
 interface Curator {
@@ -240,7 +241,7 @@ export default function TestsManagement() {
             })) : 
             []
         }
-      })
+      });
 
       const payload = {
         title: newTest.title,
@@ -312,7 +313,7 @@ export default function TestsManagement() {
         title: fullTest.title,
         description: fullTest.description || '',
         questions: fullTest.questions || [],
-        assignedGroups: fullTest.assignedGroups || []
+        assignedGroups: fullTest.assignedGroups || [] // Explicitly set assignedGroups from the fetched test
       })
       setIsEditing(true)
       setEditingTestId(test.id)
@@ -397,6 +398,13 @@ export default function TestsManagement() {
     try {
       if (!editingTestId) return
 
+      // Debug log
+      console.log('Updating test with:', {
+        title: newTest.title,
+        description: newTest.description,
+        assignedGroups: newTest.assignedGroups
+      })
+
       // Validate required fields
       if (!newTest.title) {
         toast.error('Test title is required')
@@ -445,7 +453,7 @@ export default function TestsManagement() {
             })) : 
             []
         }
-      })
+      });
 
       const payload = {
         title: newTest.title,
@@ -918,10 +926,18 @@ export default function TestsManagement() {
                   selectionMode="multiple"
                   variant="bordered"
                   size="sm"
-                  selectedKeys={new Set(newTest.assignedGroups)}
+                  selectedKeys={new Set(
+                    newTest.assignedGroups.map(groupCode => 
+                      groups.find(group => group.code === groupCode)?.id || groupCode
+                    )
+                  )}
                   onSelectionChange={(keys) => setNewTest(prev => ({
                     ...prev, 
-                    assignedGroups: Array.from(keys) as string[]
+                    assignedGroups: keys === 'all' 
+                      ? groups.map(group => group.code) 
+                      : Array.from(keys).map(key => 
+                          groups.find(group => group.id === key)?.code || ''
+                        ).filter(code => code !== '')
                   }))}
                   className="text-gray-800 dark:text-white"
                   classNames={{
@@ -935,7 +951,7 @@ export default function TestsManagement() {
                       value={group.id}
                       className="text-gray-800 dark:text-white text-xs sm:text-sm"
                     >
-                      {group.name}
+                       {`${group.name} - ${group.code}`}
                     </SelectItem>
                   ))}
                 </Select>
@@ -1070,10 +1086,18 @@ export default function TestsManagement() {
                   selectionMode="multiple"
                   variant="bordered"
                   size="sm"
-                  selectedKeys={new Set(newTest.assignedGroups)}
+                  selectedKeys={new Set(
+                    newTest.assignedGroups.map(groupCode => 
+                      groups.find(group => group.code === groupCode)?.id || groupCode
+                    )
+                  )}
                   onSelectionChange={(keys) => setNewTest(prev => ({
                     ...prev, 
-                    assignedGroups: Array.from(keys) as string[]
+                    assignedGroups: keys === 'all' 
+                      ? groups.map(group => group.code) 
+                      : Array.from(keys).map(key => 
+                          groups.find(group => group.id === key)?.code || ''
+                        ).filter(code => code !== '')
                   }))}
                   className="text-gray-800 dark:text-white"
                   classNames={{
@@ -1087,7 +1111,7 @@ export default function TestsManagement() {
                       value={group.id}
                       className="text-gray-800 dark:text-white text-xs sm:text-sm"
                     >
-                      {group.name}
+                      {`${group.name} - ${group.code}`}
                     </SelectItem>
                   ))}
                 </Select>

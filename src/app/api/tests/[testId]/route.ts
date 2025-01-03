@@ -17,6 +17,9 @@ export async function GET(
         questions: {
           include: {
             options: true
+          },
+          orderBy: {
+            order: 'asc' // Сортировка вопросов по порядку
           }
         },
         testAssignments: {
@@ -40,10 +43,17 @@ export async function GET(
       assignment => assignment.group?.groupStudentModels || []
     )
 
-    return NextResponse.json({
+    // Трансформируем данные для соответствия требованиям
+    const transformedTest = {
       ...test,
+      questions: test.questions, // Теперь это массив вопросов
+      assignedGroups: test.testAssignments.map(
+        assignment => assignment.group.code // Возвращаем код группы
+      ),
       students
-    })
+    }
+
+    return NextResponse.json(transformedTest)
   } catch (error) {
     console.error('Error fetching test:', error)
     return new NextResponse('Internal Server Error', { status: 500 })
@@ -55,15 +65,11 @@ export async function PUT(
   { params }: { params: { testId: string } }
 ) {
   try {
-    // Await the params to resolve the NextJS warning
     const testId = params.testId
 
     // Parse the request body safely
     const body = await request.json()
     
-    // Detailed payload logging
-    console.log('Received update payload:', JSON.stringify(body, null, 2))
-
     // Validate the payload
     if (!body || typeof body !== 'object') {
       return new NextResponse('Invalid payload', { status: 400 })
@@ -81,28 +87,75 @@ export async function PUT(
       return new NextResponse('Invalid questions format', { status: 400 })
     }
 
-    // Validate question types and structure
-    questions.forEach((question, index) => {
-      if (!question.text) {
-        throw new Error(`Question ${index + 1} is missing text`)
-      }
-      
-      if (!['SINGLE_CHOICE', 'MULTIPLE_CHOICE', 'TEXT'].includes(question.type)) {
-        throw new Error(`Invalid question type for question ${index + 1}`)
-      }
-
-      if (question.type !== 'TEXT') {
-        if (!question.options || !Array.isArray(question.options) || question.options.length === 0) {
-          throw new Error(`Question ${index + 1} must have at least one option`)
+    // Comprehensive question validation
+    const validateQuestions = (questions: any[]) => {
+      for (let i = 0; i < questions.length; i++) {
+        const question = questions[i]
+        
+        // Validate question type
+        if (!question.type) {
+          throw new Error(`Question ${i + 1} is missing a type`)
         }
 
-        question.options.forEach((opt: QuestionOption, optIndex: number) => {
-          if (!opt.text) {
-            throw new Error(`Option ${optIndex + 1} in question ${index + 1} is missing text`)
+        // Validate options for non-TEXT questions
+        if (question.type !== 'TEXT') {
+          if (!question.options || !Array.isArray(question.options) || question.options.length === 0) {
+            throw new Error(`Question ${i + 1} must have at least one option`)
           }
-        })
+
+          // Validate each option
+          question.options.forEach((opt: any, optIndex: number) => {
+            if (!opt.text) {
+              throw new Error(`Option ${optIndex + 1} in question ${i + 1} must have a text`)
+            }
+            // Ensure score is a number
+            opt.score = opt.score !== undefined ? Number(opt.score) : 0
+          })
+        }
       }
-    })
+      return questions
+    }
+
+    // Validate and process questions
+    const processedQuestions = validateQuestions(questions)
+
+    // Находим группы по их кодам
+    let validatedGroups: string[] = []
+    if (testAssignments && testAssignments.length > 0) {
+      // Debug logging
+      console.log('Received test assignments:', testAssignments)
+
+      // Check if the assignments are group codes or group IDs
+      const groups = await prisma.group.findMany({
+        where: {
+          OR: [
+            { code: { in: testAssignments } },  // Match by group codes
+            { id: { in: testAssignments } }     // Match by group IDs
+          ]
+        },
+        select: { id: true, code: true }
+      })
+
+      // Debug logging
+      console.log('Found groups:', groups)
+
+      // Validate that all provided assignments match either codes or IDs
+      if (groups.length !== testAssignments.length) {
+        // Find which assignments are invalid
+        const validGroupCodesAndIds = new Set(groups.map(g => g.code).concat(groups.map(g => g.id)))
+        const invalidAssignments = testAssignments.filter((assignment: string) => 
+          !validGroupCodesAndIds.has(assignment)
+        )
+
+        // Debug logging
+        console.log('Valid group codes and IDs:', Array.from(validGroupCodesAndIds))
+        console.log('Invalid assignments:', invalidAssignments)
+
+        return new NextResponse(`Invalid group assignments: ${invalidAssignments.join(', ')}`, { status: 400 })
+      }
+
+      validatedGroups = groups.map(group => group.id)
+    }
 
     // Update test and handle questions/options in a transaction
     const updatedTest = await prisma.$transaction(async (tx) => {
@@ -115,7 +168,7 @@ export async function PUT(
           // Remove all existing group assignments and create new ones
           testAssignments: {
             deleteMany: {},
-            create: (testAssignments || []).map((groupId: string) => ({
+            create: validatedGroups.map(groupId => ({
               groupId
             }))
           }
@@ -128,11 +181,7 @@ export async function PUT(
           },
           testAssignments: {
             include: {
-              group: {
-                include: {
-                  groupStudentModels: true
-                }
-              }
+              group: true
             }
           }
         }
@@ -143,17 +192,12 @@ export async function PUT(
       
       // Identify question IDs to be deleted (those in existing questions but not in the new input)
       const questionIdsToDelete = existingQuestionIds.filter(
-        existId => !questions.some(q => q.id === existId)
+        existId => !processedQuestions.some(q => q.id === existId)
       );
 
       // Update existing questions and their options
       const updatedQuestions = await Promise.all(
-        questions.map(async (question: { 
-          id?: string; 
-          text: string; 
-          type: 'SINGLE_CHOICE' | 'MULTIPLE_CHOICE' | 'TEXT'; 
-          options?: Array<{ text: string; score?: number }> 
-        }, index: number) => {
+        processedQuestions.map(async (question, index) => {
           if (question.id) {
             // Update existing question
             const updatedQuestion = await tx.question.update({
@@ -164,7 +208,7 @@ export async function PUT(
                 order: index + 1,
                 options: {
                   deleteMany: {},
-                  create: question.type !== 'TEXT' ? (question.options || []).map((opt, optIndex) => ({
+                  create: question.type !== 'TEXT' ? question.options.map((opt: QuestionOption, optIndex: number) => ({
                     text: opt.text,
                     score: opt.score || 0,
                     order: optIndex + 1
@@ -185,7 +229,7 @@ export async function PUT(
                 testId: test.id,
                 order: index + 1,
                 options: {
-                  create: question.type !== 'TEXT' ? (question.options || []).map((opt, optIndex) => ({
+                  create: question.type !== 'TEXT' ? question.options.map((opt: QuestionOption, optIndex: number) => ({
                     text: opt.text,
                     score: opt.score || 0,
                     order: optIndex + 1
@@ -217,28 +261,29 @@ export async function PUT(
         })
       }
 
+      // Трансформируем результат
       return {
         ...test,
         questions: updatedQuestions,
-        assignedGroups: test.testAssignments.map((ta: { group: { id: string } }) => ta.group.id),
-        students: test.testAssignments.flatMap(
-          assignment => assignment.group?.groupStudentModels || []
+        assignedGroups: test.testAssignments.map(
+          assignment => assignment.group.code
         )
       }
     }, {
-      // Add explicit transaction options for more control
       isolationLevel: 'Serializable'
     })
 
     return NextResponse.json(updatedTest)
   } catch (error) {
-    // More detailed error logging
     console.error('Detailed error during test update:', error)
     
     if (error instanceof Error) {
       console.error('Error name:', error.name)
       console.error('Error message:', error.message)
       console.error('Error stack:', error.stack)
+      
+      // Log the full error object for more details
+      console.error('Full error object:', JSON.stringify(error, Object.getOwnPropertyNames(error)))
       
       return new NextResponse(error.message, { status: 500 })
     }
