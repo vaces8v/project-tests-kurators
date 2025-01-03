@@ -59,13 +59,6 @@ interface Curator {
   role: 'curator'
 }
 
-const DEFAULT_CURATOR: Curator = {
-  id: null,
-  name: 'Куратор не назначен',
-  email: '',
-  role: 'curator'
-}
-
 export default function TestsManagement() {
   const [tests, setTests] = useState<Test[]>([])
   const [groups, setGroups] = useState<Group[]>([])
@@ -217,18 +210,17 @@ export default function TestsManagement() {
           throw new Error(`Invalid question type for question ${index + 1}`)
         }
 
-        // Validate options for non-text questions
+        // For non-TEXT questions, ensure options are not empty
         if (q.type !== 'TEXT') {
-          if (!q.options || q.options.length === 0) {
-            throw new Error(`Question ${index + 1} must have at least one option`)
+          // If options are empty or not provided, allow it but validate option text if present
+          if (q.options && q.options.length > 0) {
+            // Validate each option
+            q.options.forEach((opt, optIndex) => {
+              if (!opt.text || opt.text.trim() === '') {
+                throw new Error(`Option ${optIndex + 1} in question ${index + 1} is missing text`)
+              }
+            })
           }
-
-          // Validate option text
-          q.options.forEach((opt, optIndex) => {
-            if (!opt.text) {
-              throw new Error(`Option ${optIndex + 1} in question ${index + 1} is missing text`)
-            }
-          })
         }
 
         return {
@@ -354,7 +346,7 @@ export default function TestsManagement() {
         title: updatedTest.title,
         description: updatedTest.description || '',
         questions: validatedQuestions,
-        testAssignments: updatedTest.assignedGroups || []
+        assignedGroups: updatedTest.assignedGroups || []
       }
 
       const response = await fetch(`/api/tests/${updatedTest.id}`, {
@@ -398,13 +390,6 @@ export default function TestsManagement() {
     try {
       if (!editingTestId) return
 
-      // Debug log
-      console.log('Updating test with:', {
-        title: newTest.title,
-        description: newTest.description,
-        assignedGroups: newTest.assignedGroups
-      })
-
       // Validate required fields
       if (!newTest.title) {
         toast.error('Test title is required')
@@ -417,7 +402,7 @@ export default function TestsManagement() {
         return
       }
 
-      // Validate questions (same validation as in createTest)
+      // Validate questions with more strict checks
       const validatedQuestions = newTest.questions.map((q, index) => {
         if (!q.text) {
           throw new Error(`Question ${index + 1} is missing text`)
@@ -427,16 +412,17 @@ export default function TestsManagement() {
           throw new Error(`Invalid question type for question ${index + 1}`)
         }
 
+        // For non-TEXT questions, ensure options are not empty
         if (q.type !== 'TEXT') {
-          if (!q.options || q.options.length === 0) {
-            throw new Error(`Question ${index + 1} must have at least one option`)
+          // If options are empty or not provided, allow it but validate option text if present
+          if (q.options && q.options.length > 0) {
+            // Validate each option
+            q.options.forEach((opt, optIndex) => {
+              if (!opt.text || opt.text.trim() === '') {
+                throw new Error(`Option ${optIndex + 1} in question ${index + 1} is missing text`)
+              }
+            })
           }
-
-          q.options.forEach((opt, optIndex) => {
-            if (!opt.text) {
-              throw new Error(`Option ${optIndex + 1} in question ${index + 1} is missing text`)
-            }
-          })
         }
 
         return {
@@ -444,23 +430,31 @@ export default function TestsManagement() {
           ...(q.id ? { id: q.id } : {}),
           text: q.text,
           type: q.type,
+          order: index + 1,
           options: q.type !== 'TEXT' ? 
-            q.options.filter(opt => opt.text.trim() !== '').map(opt => ({
+            q.options.map((opt, optIndex) => ({
               // Preserve existing option ID if present
               ...(opt.id ? { id: opt.id } : {}),
               text: opt.text,
-              score: opt.score || 0
+              score: opt.score || 0,
+              order: optIndex + 1
             })) : 
             []
         }
       });
 
+      // Debug log
+      console.log('Validated questions:', JSON.stringify(validatedQuestions, null, 2))
+
       const payload = {
         title: newTest.title,
         description: newTest.description || '',
         questions: validatedQuestions,
-        testAssignments: newTest.assignedGroups || []
+        assignedGroups: newTest.assignedGroups || []
       }
+
+      // Debug log
+      console.log('Update payload:', JSON.stringify(payload, null, 2))
 
       const response = await fetch(`/api/tests/${editingTestId}`, {
         method: 'PUT',
@@ -470,6 +464,7 @@ export default function TestsManagement() {
         body: JSON.stringify(payload)
       })
 
+      // More comprehensive error handling
       if (!response.ok) {
         const errorText = await response.text()
         console.error('Server error response:', errorText)
@@ -571,6 +566,9 @@ export default function TestsManagement() {
         }
 
         editingQuestion.options = validOptions
+      } else {
+        // For TEXT type, ensure options are cleared
+        editingQuestion.options = []
       }
 
       // Find the test that contains this question
@@ -591,7 +589,11 @@ export default function TestsManagement() {
 
       // Create a copy of the current test with updated question
       const updatedQuestions = (currentTest.questions || []).map(q => 
-        q.id === editingQuestion.id ? { ...editingQuestion } : q
+        q.id === editingQuestion.id ? { 
+          ...editingQuestion,
+          // Ensure options are cleared for TEXT type
+          options: editingQuestion.type === 'TEXT' ? [] : editingQuestion.options 
+        } : q
       )
 
       // Create a new test object with updated questions
@@ -931,14 +933,24 @@ export default function TestsManagement() {
                       groups.find(group => group.code === groupCode)?.id || groupCode
                     )
                   )}
-                  onSelectionChange={(keys) => setNewTest(prev => ({
-                    ...prev, 
-                    assignedGroups: keys === 'all' 
+                  onSelectionChange={(keys) => {
+                    const selectedGroupCodes = keys === 'all' 
                       ? groups.map(group => group.code) 
-                      : Array.from(keys).map(key => 
-                          groups.find(group => group.id === key)?.code || ''
-                        ).filter(code => code !== '')
-                  }))}
+                      : Array.from(keys)
+                          .map(key => {
+                            // Try to find by ID first, then fallback to the key itself
+                            const group = groups.find(group => group.id === key)
+                            return group?.code || (typeof key === 'string' ? key : '')
+                          })
+                          .filter(code => code !== '')
+                    
+                    console.log('Selected Group Codes:', selectedGroupCodes)
+                    
+                    setNewTest(prev => ({
+                      ...prev, 
+                      assignedGroups: selectedGroupCodes
+                    }))
+                  }}
                   className="text-gray-800 dark:text-white"
                   classNames={{
                     trigger: "text-gray-800 dark:text-white text-xs sm:text-sm",
@@ -1091,14 +1103,24 @@ export default function TestsManagement() {
                       groups.find(group => group.code === groupCode)?.id || groupCode
                     )
                   )}
-                  onSelectionChange={(keys) => setNewTest(prev => ({
-                    ...prev, 
-                    assignedGroups: keys === 'all' 
+                  onSelectionChange={(keys) => {
+                    const selectedGroupCodes = keys === 'all' 
                       ? groups.map(group => group.code) 
-                      : Array.from(keys).map(key => 
-                          groups.find(group => group.id === key)?.code || ''
-                        ).filter(code => code !== '')
-                  }))}
+                      : Array.from(keys)
+                          .map(key => {
+                            // Try to find by ID first, then fallback to the key itself
+                            const group = groups.find(group => group.id === key)
+                            return group?.code || (typeof key === 'string' ? key : '')
+                          })
+                          .filter(code => code !== '')
+                    
+                    console.log('Selected Group Codes:', selectedGroupCodes)
+                    
+                    setNewTest(prev => ({
+                      ...prev, 
+                      assignedGroups: selectedGroupCodes
+                    }))
+                  }}
                   className="text-gray-800 dark:text-white"
                   classNames={{
                     trigger: "text-gray-800 dark:text-white text-xs sm:text-sm",

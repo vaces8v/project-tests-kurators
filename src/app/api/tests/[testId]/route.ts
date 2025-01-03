@@ -1,4 +1,4 @@
-import { QuestionOption } from "@prisma/client"
+import { QuestionOption, Question } from "@prisma/client"
 import { NextRequest, NextResponse } from "next/server"
 import { Prisma, PrismaClient } from "@prisma/client"
 import {prisma} from "@/lib/prisma"
@@ -7,9 +7,9 @@ export async function GET(
   request: NextRequest,
   { params }: { params: { testId: string } }
 ) {
-  try {
-    const testId = params.testId
+  const testId = params.testId
 
+  try {
     // Fetch the full test details including related data
     const test = await prisma.test.findUnique({
       where: { id: testId },
@@ -19,44 +19,39 @@ export async function GET(
             options: true
           },
           orderBy: {
-            order: 'asc' // Сортировка вопросов по порядку
+            order: 'asc'
           }
         },
         testAssignments: {
           include: {
-            group: {
-              include: {
-                groupStudentModels: true
-              }
-            }
+            group: true
           }
         }
       }
     })
 
     if (!test) {
-      return new NextResponse('Test not found', { status: 404 })
+      return NextResponse.json({ error: 'Test not found' }, { status: 404 })
     }
 
-    // Extract students from all groups in test assignments
-    const students = test.testAssignments.flatMap(
-      assignment => assignment.group?.groupStudentModels || []
-    )
-
-    // Трансформируем данные для соответствия требованиям
-    const transformedTest = {
+    return NextResponse.json({
       ...test,
-      questions: test.questions, // Теперь это массив вопросов
-      assignedGroups: test.testAssignments.map(
-        assignment => assignment.group.code // Возвращаем код группы
-      ),
-      students
-    }
-
-    return NextResponse.json(transformedTest)
+      assignedGroups: test.testAssignments.map(ta => ta.group.code),
+      questions: test.questions.map(q => ({
+        ...q,
+        options: q.type !== 'TEXT' ? q.options : []
+      }))
+    })
   } catch (error) {
     console.error('Error fetching test:', error)
-    return new NextResponse('Internal Server Error', { status: 500 })
+    return NextResponse.json(
+      { 
+        error: error instanceof Error ? error.message : 'Unknown error',
+        details: error instanceof Error ? error.stack : 'No additional details',
+        type: error ? error.constructor.name : 'Unknown error type'
+      }, 
+      { status: 500 }
+    )
   }
 }
 
@@ -64,231 +59,142 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: { testId: string } }
 ) {
+  const testId = params.testId
+  const body = await request.json()
+
   try {
-    const testId = params.testId
-
-    // Parse the request body safely
-    const body = await request.json()
-    
-    // Validate the payload
-    if (!body || typeof body !== 'object') {
-      return new NextResponse('Invalid payload', { status: 400 })
-    }
-
-    const { title, description, questions, testAssignments } = body
-
-    // Validate required fields
-    if (!title) {
-      return new NextResponse('Test title is required', { status: 400 })
-    }
-
-    // Validate question data
-    if (!questions || !Array.isArray(questions)) {
-      return new NextResponse('Invalid questions format', { status: 400 })
-    }
-
-    // Comprehensive question validation
-    const validateQuestions = (questions: any[]) => {
-      for (let i = 0; i < questions.length; i++) {
-        const question = questions[i]
-        
-        // Validate question type
-        if (!question.type) {
-          throw new Error(`Question ${i + 1} is missing a type`)
-        }
-
-        // Validate options for non-TEXT questions
-        if (question.type !== 'TEXT') {
-          if (!question.options || !Array.isArray(question.options) || question.options.length === 0) {
-            throw new Error(`Question ${i + 1} must have at least one option`)
-          }
-
-          // Validate each option
-          question.options.forEach((opt: any, optIndex: number) => {
-            if (!opt.text) {
-              throw new Error(`Option ${optIndex + 1} in question ${i + 1} must have a text`)
-            }
-            // Ensure score is a number
-            opt.score = opt.score !== undefined ? Number(opt.score) : 0
-          })
-        }
-      }
-      return questions
-    }
-
-    // Validate and process questions
-    const processedQuestions = validateQuestions(questions)
-
-    // Находим группы по их кодам
-    let validatedGroups: string[] = []
-    if (testAssignments && testAssignments.length > 0) {
-      // Debug logging
-      console.log('Received test assignments:', testAssignments)
-
-      // Check if the assignments are group codes or group IDs
-      const groups = await prisma.group.findMany({
-        where: {
-          OR: [
-            { code: { in: testAssignments } },  // Match by group codes
-            { id: { in: testAssignments } }     // Match by group IDs
-          ]
-        },
-        select: { id: true, code: true }
-      })
-
-      // Debug logging
-      console.log('Found groups:', groups)
-
-      // Validate that all provided assignments match either codes or IDs
-      if (groups.length !== testAssignments.length) {
-        // Find which assignments are invalid
-        const validGroupCodesAndIds = new Set(groups.map(g => g.code).concat(groups.map(g => g.id)))
-        const invalidAssignments = testAssignments.filter((assignment: string) => 
-          !validGroupCodesAndIds.has(assignment)
-        )
-
-        // Debug logging
-        console.log('Valid group codes and IDs:', Array.from(validGroupCodesAndIds))
-        console.log('Invalid assignments:', invalidAssignments)
-
-        return new NextResponse(`Invalid group assignments: ${invalidAssignments.join(', ')}`, { status: 400 })
-      }
-
-      validatedGroups = groups.map(group => group.id)
-    }
-
-    // Update test and handle questions/options in a transaction
     const updatedTest = await prisma.$transaction(async (tx) => {
-      // Update the test basic info
+      // Update test metadata
       const test = await tx.test.update({
         where: { id: testId },
         data: {
-          title,
-          description,
-          // Remove all existing group assignments and create new ones
-          testAssignments: {
-            deleteMany: {},
-            create: validatedGroups.map(groupId => ({
-              groupId
-            }))
-          }
-        },
-        include: {
-          questions: {
-            include: {
-              options: true
-            }
-          },
-          testAssignments: {
-            include: {
-              group: true
-            }
-          }
+          title: body.title,
+          description: body.description || null
         }
       })
 
-      // Get existing question IDs from the database
-      const existingQuestionIds = test.questions.map(q => q.id);
-      
-      // Identify question IDs to be deleted (those in existing questions but not in the new input)
-      const questionIdsToDelete = existingQuestionIds.filter(
-        existId => !processedQuestions.some(q => q.id === existId)
-      );
-
-      // Update existing questions and their options
-      const updatedQuestions = await Promise.all(
-        processedQuestions.map(async (question, index) => {
-          if (question.id) {
-            // Update existing question
-            const updatedQuestion = await tx.question.update({
-              where: { id: question.id },
-              data: {
-                text: question.text,
-                type: question.type,
-                order: index + 1,
-                options: {
-                  deleteMany: {},
-                  create: question.type !== 'TEXT' ? question.options.map((opt: QuestionOption, optIndex: number) => ({
-                    text: opt.text,
-                    score: opt.score || 0,
-                    order: optIndex + 1
-                  })) : []
-                }
-              },
-              include: {
-                options: true
-              }
-            })
-            return updatedQuestion
-          } else {
-            // Create new question
-            return tx.question.create({
-              data: {
-                text: question.text,
-                type: question.type,
-                testId: test.id,
-                order: index + 1,
-                options: {
-                  create: question.type !== 'TEXT' ? question.options.map((opt: QuestionOption, optIndex: number) => ({
-                    text: opt.text,
-                    score: opt.score || 0,
-                    order: optIndex + 1
-                  })) : []
-                }
-              },
-              include: {
-                options: true
-              }
-            })
-          }
+      // Manage test assignments (groups)
+      if (body.assignedGroups && body.assignedGroups.length > 0) {
+        // First, delete existing assignments
+        await tx.testAssignment.deleteMany({
+          where: { testId }
         })
-      )
 
-      // Delete questions that are no longer in the input
-      if (questionIdsToDelete.length > 0) {
-        // First, delete options for these questions
+        // Find group IDs based on group codes
+        const groups = await tx.group.findMany({
+          where: { code: { in: body.assignedGroups } }
+        })
+
+        // Create new assignments
+        await tx.testAssignment.createMany({
+          data: groups.map(group => ({
+            testId,
+            groupId: group.id
+          }))
+        })
+      }
+
+      // Manage questions
+      const existingQuestions = await tx.question.findMany({
+        where: { testId },
+        include: { options: true }
+      })
+
+      // Track question IDs to identify deletions
+      const incomingQuestionIds = body.questions
+        .filter((q: any) => q.id)
+        .map((q: any) => q.id)
+
+      // Delete questions not in the incoming list
+      const questionsToDelete = existingQuestions
+        .filter(eq => !incomingQuestionIds.includes(eq.id))
+
+      for (const questionToDelete of questionsToDelete) {
         await tx.questionOption.deleteMany({
-          where: { 
-            questionId: { in: questionIdsToDelete } 
-          }
+          where: { questionId: questionToDelete.id }
         })
-
-        // Then delete the questions
-        await tx.question.deleteMany({
-          where: { 
-            id: { in: questionIdsToDelete } 
-          }
+        await tx.question.delete({
+          where: { id: questionToDelete.id }
         })
       }
 
-      // Трансформируем результат
-      return {
-        ...test,
-        questions: updatedQuestions,
-        assignedGroups: test.testAssignments.map(
-          assignment => assignment.group.code
-        )
-      }
-    }, {
-      isolationLevel: 'Serializable'
+      // Update or create questions
+      const updatedQuestions = await Promise.all(body.questions.map(async (questionData: any) => {
+        const questionPayload = {
+          testId,
+          text: questionData.text,
+          type: questionData.type,
+          order: questionData.order || 0
+        }
+
+        let question;
+        if (questionData.id) {
+          // Update existing question
+          question = await tx.question.update({
+            where: { id: questionData.id },
+            data: questionPayload
+          })
+        } else {
+          // Create new question
+          question = await tx.question.create({
+            data: questionPayload
+          })
+        }
+
+        // Manage question options
+        if (questionData.type !== 'TEXT' && questionData.options) {
+          // Delete existing options
+          await tx.questionOption.deleteMany({
+            where: { questionId: question.id }
+          })
+
+          // Create new options
+          await tx.questionOption.createMany({
+            data: questionData.options.map((opt: any, index: number) => ({
+              questionId: question.id,
+              text: opt.text,
+              score: opt.score || 0,
+              order: index + 1
+            }))
+          })
+        }
+
+        return question
+      }))
+
+      // Fetch and return the complete updated test
+      return await tx.test.findUnique({
+        where: { id: testId },
+        include: {
+          questions: {
+            include: { options: true },
+            orderBy: { order: 'asc' }
+          },
+          testAssignments: {
+            include: { group: true }
+          }
+        }
+      })
     })
 
-    return NextResponse.json(updatedTest)
+    return NextResponse.json({
+      ...updatedTest,
+      assignedGroups: updatedTest?.testAssignments.map(ta => ta.group.code),
+      questions: updatedTest?.questions.map(q => ({
+        ...q,
+        options: q.type !== 'TEXT' ? q.options : []
+      }))
+    }, { status: 200 })
   } catch (error) {
-    console.error('Detailed error during test update:', error)
-    
-    if (error instanceof Error) {
-      console.error('Error name:', error.name)
-      console.error('Error message:', error.message)
-      console.error('Error stack:', error.stack)
-      
-      // Log the full error object for more details
-      console.error('Full error object:', JSON.stringify(error, Object.getOwnPropertyNames(error)))
-      
-      return new NextResponse(error.message, { status: 500 })
-    }
-    
-    return new NextResponse('Unexpected error occurred during test update', { status: 500 })
+    console.error('Error updating test:', error)
+    return NextResponse.json(
+      { 
+        error: error instanceof Error ? error.message : 'Unknown error',
+        details: error instanceof Error ? error.stack : 'No additional details',
+        type: error ? error.constructor.name : 'Unknown error type'
+      }, 
+      { status: 500 }
+    )
   }
 }
 
@@ -296,9 +202,9 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: { testId: string } }
 ) {
-  try {
-    const testId = params.testId
+  const testId = params.testId
 
+  try {
     // Delete test in a transaction to handle related records
     const deletedTest = await prisma.$transaction(async (tx) => {
       // First, delete test assignments
@@ -333,7 +239,11 @@ export async function DELETE(
     }, { status: 200 })
   } catch (error) {
     console.error('Error deleting test:', error)
-    
+    console.error('Error type:', typeof error)
+    console.error('Error constructor:', error?.constructor?.name)
+    console.error('Error message:', error instanceof Error ? error.message : String(error))
+    console.error('Error stack:', error instanceof Error ? error.stack : 'No stack trace')
+
     if (error instanceof Prisma.PrismaClientKnownRequestError) {
       // The .code property can be accessed in a type-safe manner
       if (error.code === 'P2025') {

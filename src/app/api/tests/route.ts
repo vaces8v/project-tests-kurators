@@ -148,48 +148,51 @@ export async function POST(request: Request) {
       }, { status: 400 })
     }
 
-    // Comprehensive group validation
-    let validatedGroups: any[] = []
-    if (assignedGroups && assignedGroups.length > 0) {
-      // For curators, only allow assigning to their own groups
-      const groupQuery = {
-        where: session.user.role === 'CURATOR' 
-          ? {
-              id: { in: assignedGroups },
-              curatorId: session.user.id
-            }
-          : {
-              id: { in: assignedGroups }
-            }
-      }
+    // Validate group codes
+    const availableGroups = await prisma.group.findMany({
+      select: { code: true, id: true }
+    })
+    const availableGroupCodes = availableGroups.map(g => g.code)
 
-      validatedGroups = await prisma.group.findMany({
-        where: groupQuery.where,
-        select: { 
-          id: true, 
-          name: true, 
-          code: true,
-          curator: {
-            select: {
-              id: true,
-              name: true
-            }
-          }
-        }
+    const invalidGroups = (assignedGroups || []).filter(
+      (groupCode: string) => !availableGroupCodes.includes(groupCode)
+    )
+
+    // If there are invalid groups, create them
+    if (invalidGroups.length > 0) {
+      console.warn(`Creating missing groups: ${invalidGroups.join(', ')}`)
+      
+      const newGroups = await prisma.group.createMany({
+        data: invalidGroups.map((code: string) => ({
+          code: code,
+          name: `Группа ${code}`,
+          createdAt: new Date(),
+          updatedAt: new Date()
+        })),
+        skipDuplicates: true
       })
 
-      const validGroupIds = validatedGroups.map(group => group.id)
-      const invalidGroups = assignedGroups.filter((id: string) => !validGroupIds.includes(id))
-
-      if (invalidGroups.length > 0) {
-        return NextResponse.json({ 
-          error: 'Invalid group IDs', 
-          invalidGroups,
-          details: `The following group IDs are invalid: ${invalidGroups.join(', ')}`,
-          validGroups: validatedGroups
-        }, { status: 400 })
-      }
+      console.log('New groups created:', newGroups)
     }
+
+    // Re-fetch available groups after potential creation
+    const updatedAvailableGroups = await prisma.group.findMany({
+      select: { code: true, id: true }
+    })
+
+    // Map group codes to group IDs
+    const groupCodeToIdMap = Object.fromEntries(
+      updatedAvailableGroups.map(group => [group.code, group.id])
+    )
+
+    // Validate and convert group codes to group IDs
+    const validatedGroupIds = (assignedGroups || []).map((groupCode: string) => {
+      const groupId = groupCodeToIdMap[groupCode]
+      if (!groupId) {
+        throw new Error(`Invalid group code: ${groupCode}`)
+      }
+      return groupId
+    })
 
     // Create test with questions and options using a transaction
     const test = await prisma.$transaction(async (prisma) => {
@@ -202,8 +205,8 @@ export async function POST(request: Request) {
             description: description || '',
             authorId: user.id,
             // Add group assignments
-            testAssignments: assignedGroups && assignedGroups.length > 0 ? {
-              create: assignedGroups.map((groupId: string) => ({
+            testAssignments: validatedGroupIds.length > 0 ? {
+              create: validatedGroupIds.map((groupId: string) => ({
                 groupId: groupId
               }))
             } : undefined
