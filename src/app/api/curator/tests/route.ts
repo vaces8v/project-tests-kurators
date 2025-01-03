@@ -1,10 +1,8 @@
 import { NextResponse } from 'next/server'
-import { PrismaClient } from '@prisma/client'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { randomBytes } from 'crypto'
-
-const prisma = new PrismaClient()
+import { prisma } from '@/lib/prisma'
 
 export async function POST(request: Request) {
   const session = await getServerSession(authOptions)
@@ -21,18 +19,16 @@ export async function POST(request: Request) {
       data: {
         title,
         description,
-        difficulty,
-        creator: { connect: { id: session.user.id } },
+        author: { connect: { id: session.user.id } },
         questions: {
           create: questions.map((q: any) => ({
             text: q.text,
             type: q.type,
             options: q.options || [],
-            correctAnswer: q.correctAnswer,
-            points: q.points || 1
+            order: q.order || 1
           }))
         },
-        assignments: {
+        testAssignments: {
           create: groupIds.map((groupId: string) => ({
             group: { connect: { id: groupId } },
             uniqueLink: `/test/${randomBytes(16).toString('hex')}`
@@ -41,14 +37,14 @@ export async function POST(request: Request) {
       },
       include: {
         questions: true,
-        assignments: true
+        testAssignments: true
       }
     })
 
     return NextResponse.json(test, { status: 201 })
   } catch (error) {
     console.error('Test creation error:', error)
-    return NextResponse.json({ error: 'Test creation failed' }, { status: 500 })
+    return NextResponse.json({ error: 'Test creation failed', details: error }, { status: 500 })
   }
 }
 
@@ -70,16 +66,25 @@ export async function GET(request: Request) {
     const tests = await prisma.test.findMany({
       where: {
         OR: [
-          { creatorId: session.user.id },
-          { assignments: { some: { groupId: { in: groups.map(g => g.id) } } } }
+          { authorId: session.user.id },
+          { testAssignments: { some: { groupId: { in: groups.map(g => g.id) } } } }
         ]
       },
       include: {
+        testAssignments: {
+          select: {
+            group: {
+              select: {
+                name: true
+              }
+            }
+          }
+        },
         _count: {
           select: { 
-            assignments: true, 
+            testAssignments: true, 
             questions: true,
-            results: true
+            testResults: true
           }
         }
       }
@@ -88,6 +93,6 @@ export async function GET(request: Request) {
     return NextResponse.json(tests)
   } catch (error) {
     console.error('Tests fetch error:', error)
-    return NextResponse.json({ error: 'Failed to fetch tests' }, { status: 500 })
+    return NextResponse.json({ error: 'Failed to fetch tests', details: error }, { status: 500 })
   }
 }

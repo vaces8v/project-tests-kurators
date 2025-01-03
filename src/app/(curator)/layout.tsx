@@ -57,7 +57,7 @@ export default function CuratorLayout({ children }: { children: React.ReactNode 
       label: 'Студенты' 
     },
     { 
-      href: '/curator/results', 
+      href: '/curator/test-results', 
       icon: <FileText />, 
       label: 'Результаты' 
     }

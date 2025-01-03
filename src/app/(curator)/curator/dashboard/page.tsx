@@ -38,6 +38,7 @@ export default function CuratorDashboard() {
 
   const [tests, setTests] = useState([])
   const [groups, setGroups] = useState([])
+  const [testLinks, setTestLinks] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [selectedGroup, setSelectedGroup] = useState('307ИС')
 
@@ -188,8 +189,28 @@ export default function CuratorDashboard() {
       }
     }
 
+    async function fetchTestLinks() {
+      try {
+        const linksResponse = await fetch('/api/curator/test-links')
+        const linksData = await linksResponse.json()
+        
+        if (linksResponse.ok) {
+          setTestLinks(linksData)
+        } else {
+          toast.error('Error fetching test links', {
+            description: linksData.error || 'Something went wrong'
+          })
+        }
+      } catch (error) {
+        toast.error('Network Error', {
+          description: 'Unable to fetch test links'
+        })
+      }
+    }
+
     if (status === 'authenticated') {
       fetchDashboardData()
+      fetchTestLinks()
     }
   }, [status, session])
 
@@ -201,6 +222,11 @@ export default function CuratorDashboard() {
   const handleCreateGroup = () => {
     // Redirect to group creation page
     redirect('/curator/groups/create')
+  }
+
+  const handleCopyLink = (link: string) => {
+    navigator.clipboard.writeText(link)
+    toast.success('Link copied to clipboard')
   }
 
   const groupsList = [
@@ -364,7 +390,7 @@ export default function CuratorDashboard() {
         <motion.div 
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-white shadow-md rounded-lg p-6"
+          className="bg-white shadow-md rounded-lg p-6 dark:bg-gray-800"
         >
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-2xl font-semibold">My Tests</h2>
@@ -409,7 +435,7 @@ export default function CuratorDashboard() {
         <motion.div 
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-white shadow-md rounded-lg p-6"
+          className="bg-white shadow-md rounded-lg p-6 dark:bg-gray-800"
         >
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-2xl font-semibold">My Groups</h2>
@@ -441,6 +467,50 @@ export default function CuratorDashboard() {
                   </div>
                   <button className="text-blue-500 hover:underline">
                     View Details
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </motion.div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Test Links Section */}
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-white shadow-md rounded-lg p-6 dark:bg-gray-800"
+        >
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-2xl font-semibold dark:text-white">Test Links</h2>
+          </div>
+          {isLoading ? (
+            <div>Loading test links...</div>
+          ) : testLinks.length === 0 ? (
+            <p className="text-gray-500 dark:text-gray-300">No test links created yet</p>
+          ) : (
+            <ul className="space-y-2">
+              {testLinks.map((link: any) => (
+                <li 
+                  key={link.id} 
+                  className="border-b pb-2 flex justify-between items-center"
+                >
+                  <div>
+                    <h3 className="font-medium dark:text-white">
+                      {link.linkId}
+                    </h3>
+                    <p className="text-sm text-gray-500 dark:text-gray-300">
+                      Created: {new Date(link.createdAt).toLocaleDateString()}
+                      {' | '}
+                      Expires: {new Date(link.expiresAt).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <button 
+                    onClick={() => handleCopyLink(`${window.location.origin}/test/${link.linkId}`)}
+                    className="text-blue-500 hover:underline dark:text-blue-400"
+                  >
+                    Copy Link
                   </button>
                 </li>
               ))}

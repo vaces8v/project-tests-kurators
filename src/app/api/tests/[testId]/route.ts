@@ -1,6 +1,4 @@
-import { authOptions } from "@/lib/auth"
 import { QuestionOption } from "@prisma/client"
-import { getServerSession } from "next-auth"
 import { NextRequest, NextResponse } from "next/server"
 import { Prisma, PrismaClient } from "@prisma/client"
 import {prisma} from "@/lib/prisma"
@@ -10,11 +8,6 @@ export async function GET(
   { params }: { params: { testId: string } }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session) {
-      return new NextResponse('Unauthorized', { status: 401 })
-    }
-
     const testId = params.testId
 
     // Fetch the full test details including related data
@@ -28,7 +21,11 @@ export async function GET(
         },
         testAssignments: {
           include: {
-            group: true
+            group: {
+              include: {
+                groupStudentModels: true
+              }
+            }
           }
         }
       }
@@ -38,7 +35,15 @@ export async function GET(
       return new NextResponse('Test not found', { status: 404 })
     }
 
-    return NextResponse.json(test)
+    // Extract students from all groups in test assignments
+    const students = test.testAssignments.flatMap(
+      assignment => assignment.group?.groupStudentModels || []
+    )
+
+    return NextResponse.json({
+      ...test,
+      students
+    })
   } catch (error) {
     console.error('Error fetching test:', error)
     return new NextResponse('Internal Server Error', { status: 500 })
@@ -50,11 +55,6 @@ export async function PUT(
   { params }: { params: { testId: string } }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session) {
-      return new NextResponse('Unauthorized', { status: 401 })
-    }
-
     // Await the params to resolve the NextJS warning
     const testId = params.testId
 
@@ -128,7 +128,11 @@ export async function PUT(
           },
           testAssignments: {
             include: {
-              group: true
+              group: {
+                include: {
+                  groupStudentModels: true
+                }
+              }
             }
           }
         }
@@ -216,7 +220,10 @@ export async function PUT(
       return {
         ...test,
         questions: updatedQuestions,
-        assignedGroups: test.testAssignments.map((ta: { group: { id: string } }) => ta.group.id)
+        assignedGroups: test.testAssignments.map((ta: { group: { id: string } }) => ta.group.id),
+        students: test.testAssignments.flatMap(
+          assignment => assignment.group?.groupStudentModels || []
+        )
       }
     }, {
       // Add explicit transaction options for more control
@@ -245,11 +252,6 @@ export async function DELETE(
   { params }: { params: { testId: string } }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session) {
-      return new NextResponse('Unauthorized', { status: 401 })
-    }
-
     const testId = params.testId
 
     // Delete test in a transaction to handle related records
