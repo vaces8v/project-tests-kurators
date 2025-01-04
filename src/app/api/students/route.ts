@@ -5,6 +5,7 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const groupCodesParam = searchParams.get('groupCodes')
+    const testIdParam = searchParams.get('testId')
 
     if (!groupCodesParam) {
       return NextResponse.json([], { status: 200 })
@@ -18,7 +19,17 @@ export async function GET(request: NextRequest) {
           code: {
             in: groupCodes
           }
-        }
+        },
+        // Exclude students who have already completed this test
+        ...(testIdParam ? {
+          NOT: {
+            testResults: {
+              some: {
+                testId: testIdParam
+              }
+            }
+          }
+        } : {})
       },
       include: {
         group: true

@@ -7,11 +7,11 @@ const prisma = new PrismaClient()
 
 export async function GET(
   request: NextRequest, 
-  { params }: { params: { groupId: string } }
+  context: { params: { groupId: string } }
 ) {
   try {
     const group = await prisma.group.findUnique({
-      where: { id: params.groupId },
+      where: { id: context.params.groupId },
       include: {
         curator: {
           select: {
@@ -51,7 +51,7 @@ export async function GET(
 
 export async function PUT(
   request: NextRequest, 
-  { params }: { params: { groupId: string } }
+  context: { params: { groupId: string } }
 ) {
   const session = await getServerSession(authOptions)
   
@@ -60,22 +60,18 @@ export async function PUT(
   }
 
   try {
-    const groupId = params.groupId
+    const groupId = context.params.groupId
+    const body = await request.json()
 
     if (!groupId) {
       return NextResponse.json({ error: 'Group ID is required' }, { status: 400 })
     }
 
-    // Parse the request body
-    const body = await request.json()
-    
-
     // Validate input
     const { 
       name, 
       code, 
-      curatorId,  
-      curator
+      curatorId 
     } = body
 
     if (!name || !code) {
@@ -83,9 +79,9 @@ export async function PUT(
     }
 
     // Use a transaction to ensure atomic updates
-    const updatedGroup = await prisma.$transaction(async (prisma) => {
-      // First, find the existing group and its current curator
-      const existingGroup = await prisma.group.findUnique({
+    const updatedGroup = await prisma.$transaction(async (tx) => {
+      // First, find the existing group
+      const existingGroup = await tx.group.findUnique({
         where: { id: groupId },
         include: { 
           curator: {
@@ -113,7 +109,7 @@ export async function PUT(
       // If a new curator is provided, connect them
       if (curatorId) {
         // Verify curator exists
-        const curatorExists = await prisma.user.findUnique({
+        const curatorExists = await tx.user.findUnique({
           where: { id: curatorId }
         })
 
@@ -121,30 +117,14 @@ export async function PUT(
           throw new Error('Указанный куратор не существует')
         }
 
-        // Disconnect the curator from any previous groups
-        await prisma.group.updateMany({
-          where: { curatorId: curatorId },
-          data: { curatorId: null }
-        })
-
         // Update the group with new curator
         groupUpdateData.curatorId = curatorId
         curatorChanged = true
-
-        // Update the curator's groups
-        await prisma.user.update({
-          where: { id: curatorId },
-          data: {
-            groups: {
-              connect: { id: groupId }
-            }
-          }
-        })
-
       } else {
         groupUpdateData.curatorId = null
       }
-      const updatedGroupResult = await prisma.group.update({
+
+      const updatedGroupResult = await tx.group.update({
         where: { id: groupId },
         data: groupUpdateData,
         include: {
@@ -158,7 +138,6 @@ export async function PUT(
       }
     })
 
-    
     return NextResponse.json({
       id: updatedGroup.id,
       code: updatedGroup.code,
@@ -172,7 +151,7 @@ export async function PUT(
   } catch (error) {
     console.error('Group update error:', error)
     return NextResponse.json({ 
-      error: 'Не удалось обновить группу',
+      error: 'Не удалось обновить группу', 
       details: error instanceof Error ? error.message : 'Неизвестная ошибка'
     }, { status: 500 })
   }
@@ -180,7 +159,7 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest, 
-  { params }: { params: { groupId: string } }
+  context: { params: { groupId: string } }
 ) {
   const session = await getServerSession(authOptions)
   
@@ -189,38 +168,34 @@ export async function DELETE(
   }
 
   try {
-    const groupId = params.groupId
+    const groupId = context.params.groupId
 
     if (!groupId) {
       return NextResponse.json({ error: 'Group ID is required' }, { status: 400 })
     }
 
     // Use a transaction to ensure atomic deletion
-    const deletionResult = await prisma.$transaction(async (prisma) => {
-      // First, find the group to get its curator
-      const group = await prisma.group.findUnique({
-        where: { id: groupId },
-        include: { 
-          curator: {
-            select: {
-              id: true,
-              name: true,
-              email: true
-            }
-          },
-          groupStudentModels: true 
-        }
+    await prisma.$transaction(async (tx) => {
+      // Remove test assignments for this group
+      await tx.testAssignment.deleteMany({
+        where: { groupId: groupId }
       })
 
-      if (!group) {
-        throw new Error('Группа не найдена')
-      }
+      // Remove students in this group
+      await tx.student.deleteMany({
+        where: { groupId: groupId }
+      })
 
+      // Find users in this group
+      const usersInGroup = await tx.user.findMany({
+        where: { groups: { some: { id: groupId } } },
+        select: { id: true }
+      })
 
-      // If the group has a curator, disconnect the group from the curator
-      if (group.curator) {
-        const curatorUpdateResult = await prisma.user.update({
-          where: { id: group.curator.id },
+      // Disconnect users from the group
+      for (const user of usersInGroup) {
+        await tx.user.update({
+          where: { id: user.id },
           data: {
             groups: {
               disconnect: { id: groupId }
@@ -229,31 +204,19 @@ export async function DELETE(
         })
       }
 
-      // Delete all student models associated with the group
-      const studentDeletionResult = await prisma.student.deleteMany({
-        where: { groupId: groupId }
-      })
-
-      // Finally, delete the group
-      const deletedGroup = await prisma.group.delete({
+      // Delete the group
+      await tx.group.delete({
         where: { id: groupId }
       })
-
-      return {
-        deletedGroup,
-        curatorDisconnected: !!group.curator
-      }
     })
-
+    
     return NextResponse.json({
-      message: 'Группа успешно удалена',
-      deletedGroupId: deletionResult.deletedGroup.id,
-      curatorDisconnected: deletionResult.curatorDisconnected
+      message: 'Группа успешно удалена'
     })
   } catch (error) {
     console.error('Group deletion error:', error)
     return NextResponse.json({ 
-      error: 'Не удалось удалить группу',
+      error: 'Не удалось удалить группу', 
       details: error instanceof Error ? error.message : 'Неизвестная ошибка'
     }, { status: 500 })
   }

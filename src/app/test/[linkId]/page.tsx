@@ -78,7 +78,7 @@ export default function TestTakePage() {
           const testData = await testResponse.json()
 
           // Fetch students for the test's assigned groups
-          const studentsResponse = await fetch(`/api/students?groupCodes=${testData.assignedGroups.join(',')}`)
+          const studentsResponse = await fetch(`/api/students?groupCodes=${testData.assignedGroups.join(',')}&testId=${testData.id}`)
           const studentsData = await studentsResponse.json()
 
           // Ensure we have a valid test assignment structure
