@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { 
   Table, 
   TableHeader, 
@@ -12,11 +12,6 @@ import {
   Chip,
   Select,
   SelectItem,
-  Tooltip,
-  Card,
-  CardHeader,
-  CardBody,
-  Divider,
   Input
 } from "@nextui-org/react"
 import { 
@@ -49,6 +44,10 @@ export default function CuratorStudents() {
   const [students, setStudents] = useState<Student[]>([])
   const [selectedStudents, setSelectedStudents] = useState<string[]>([])
   const [testLink, setTestLink] = useState<string>('')
+
+  // Polling state and refs
+  const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(null)
+  const isPollingRef = useRef(false)
 
   // Fetch curator's groups on component mount
   useEffect(() => {
@@ -91,6 +90,69 @@ export default function CuratorStudents() {
     fetchCuratorGroups()
   }, [])
 
+  // Start and stop polling when group changes
+  useEffect(() => {
+    // Stop any existing polling
+    if (pollingInterval) {
+      clearInterval(pollingInterval)
+    }
+
+    // Start new polling if group is selected
+    if (selectedGroup) {
+      startPollingTestStatuses()
+    }
+
+    // Cleanup on unmount
+    return () => {
+      if (pollingInterval) {
+        clearInterval(pollingInterval)
+      }
+    }
+  }, [selectedGroup])
+
+  // Function to start polling test statuses
+  const startPollingTestStatuses = () => {
+    // Prevent multiple polling instances
+    if (isPollingRef.current) return
+
+    const interval = setInterval(async () => {
+      if (!selectedGroup) return
+
+      try {
+        isPollingRef.current = true
+
+        const response = await fetch(`/api/curator/groups/${selectedGroup}/test-statuses`)
+        
+        if (response.ok) {
+          const testStatuses = await response.json()
+          
+          // Update students' test statuses
+          setStudents(prevStudents => 
+            prevStudents.map(student => {
+              const studentStatus = testStatuses.find((status: any) => status.studentId === student.id)
+              return studentStatus 
+                ? { 
+                    ...student, 
+                    testStatus: studentStatus.status === 'COMPLETED' 
+                      ? 'completed' 
+                      : studentStatus.status === 'ACTIVE'
+                        ? 'in_progress'
+                        : 'not_started'
+                  }
+                : student
+            })
+          )
+        }
+      } catch (error) {
+        console.error('Error polling test statuses:', error)
+      } finally {
+        isPollingRef.current = false
+      }
+    }, 5000) // Poll every 5 seconds
+
+    setPollingInterval(interval)
+  }
+
   // Fetch students when a group is selected
   useEffect(() => {
     const fetchStudents = async () => {
@@ -101,7 +163,6 @@ export default function CuratorStudents() {
         const groupId = typeof selectedGroup === 'object' 
           ? (selectedGroup as Group).id 
           : selectedGroup
-
 
         const response = await fetch(`/api/curator/groups/${groupId}/students`)
 

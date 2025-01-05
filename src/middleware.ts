@@ -6,12 +6,11 @@ export async function middleware(request: NextRequest) {
   const token = await getToken({ req: request })
   const path = request.nextUrl.pathname
 
-
   // Публичные пути
-  const publicPaths = ['/login', '/']
+  const publicPaths = ['/login', '/', '/test', '/test/']
 
   // Проверка публичных путей
-  if (publicPaths.includes(path)) {
+  if (publicPaths.includes(path) || path.startsWith('/test/')) {
     return NextResponse.next()
   }
 

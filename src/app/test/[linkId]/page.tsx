@@ -1,12 +1,8 @@
-'use client'
-
-import { useState, useEffect } from 'react'
+"use client"
+import { useState, useEffect, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import {
-  Card,
-  CardHeader,
-  CardBody,
   Button,
   Select,
   SelectItem,
@@ -62,6 +58,37 @@ export default function TestTakePage() {
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isStarted, setIsStarted] = useState(false)
+
+  // Ref to prevent multiple status updates
+  const statusUpdateRef = useRef(false)
+
+  // Function to update test status
+  const updateTestStatus = async (status: 'ACTIVE' | 'COMPLETED') => {
+    if (statusUpdateRef.current || !selectedStudent || !testAssignment) return
+    statusUpdateRef.current = true
+
+    try {
+      const response = await fetch('/api/test-status', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          studentId: selectedStudent,
+          testId: testAssignment.test.id,
+          status
+        })
+      })
+
+      if (!response.ok) {
+        console.error('Failed to update test status')
+      }
+    } catch (error) {
+      console.error('Error updating test status:', error)
+    } finally {
+      statusUpdateRef.current = false
+    }
+  }
 
   useEffect(() => {
     async function fetchTestDetails() {
@@ -140,6 +167,9 @@ export default function TestTakePage() {
       })
 
       if (response.ok) {
+        // Update status to COMPLETED before redirecting
+        await updateTestStatus('COMPLETED')
+        
         toast.success('Тест отправлен успешно!')
         router.push('/test-completed')
       } else {
@@ -275,6 +305,7 @@ export default function TestTakePage() {
                       return
                     }
                     setIsStarted(true)
+                    updateTestStatus('ACTIVE')
                   }}
                 >
                   Начать тест
