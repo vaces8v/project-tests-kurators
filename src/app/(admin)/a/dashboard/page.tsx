@@ -8,10 +8,10 @@ import {
   CardBody, 
   Divider, 
   Select, 
-  SelectItem 
+  SelectItem,
+  Spinner 
 } from "@nextui-org/react"
 import { 
-  FileText, 
   Users, 
   List,
   School,
@@ -27,12 +27,39 @@ const Chart = dynamic(() => import('react-apexcharts'), { ssr: false })
 export default function AdminDashboard() {
   const { theme } = useTheme()
   const [selectedPeriod, setSelectedPeriod] = useState('month')
+  const [dashboardData, setDashboardData] = useState<{
+    dashboardStats: {
+      totalUsers: number
+      groupsCount: number
+      activeTests: number
+      completedTests: number
+    }
+    userActivitySeries: { name: string, data: number[] }[]
+    systemLoadSeries: { name: string, data: number[] }[]
+    dateLabels: string[]
+    userActivityChartOptions: ApexOptions
+    systemLoadChartOptions: ApexOptions
+  } | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
 
-  const periods = [
-    { key: 'month', label: 'За месяц' },
-    { key: 'quarter', label: 'За квартал' },
-    { key: 'year', label: 'За год' }
-  ]
+  useEffect(() => {
+    async function fetchDashboardData() {
+      try {
+        const response = await fetch('/api/dashboard/stats')
+        if (!response.ok) {
+          throw new Error('Failed to fetch dashboard stats')
+        }
+        const data = await response.json()
+        setDashboardData(data)
+        setIsLoading(false)
+      } catch (error) {
+        console.error('Dashboard data fetch error:', error)
+        setIsLoading(false)
+      }
+    }
+
+    fetchDashboardData()
+  }, [])
 
   const getChartTheme = (baseOptions: ApexOptions): ApexOptions => ({
     ...baseOptions,
@@ -49,6 +76,7 @@ export default function AdminDashboard() {
     },
     xaxis: {
       ...baseOptions.xaxis,
+      categories: dashboardData?.dateLabels || [],
       labels: {
         style: {
           colors: theme === 'dark' ? '#ffffff' : '#333333'
@@ -65,14 +93,11 @@ export default function AdminDashboard() {
     },
     tooltip: {
       theme: theme === 'dark' ? 'dark' : 'light',
-      //@ts-ignore
       style: {
         backgroundColor: theme === 'dark' ? '#1f2937' : '#ffffff',
         color: theme === 'dark' ? '#ffffff' : '#333333',
-        fontSize: '12px',
-        padding: '8px',
-        maxWidth: '200px'
-      } as React.CSSProperties
+        fontSize: '12px'
+      } as const
     },
     legend: {
       labels: {
@@ -81,344 +106,49 @@ export default function AdminDashboard() {
     }
   })
 
-  const [userActivityChartOptions, setUserActivityChartOptions] = useState<ApexOptions>({
-    series: [
-      {
-        name: 'Администраторы',
-        data: [12, 15, 11, 14, 16, 13, 12]
-      },
-      {
-        name: 'Кураторы',
-        data: [45, 50, 42, 48, 52, 46, 45]
-      },
-      {
-        name: 'Студенты',
-        data: [78, 85, 72, 80, 88, 76, 79]
-      }
-    ],
-    chart: { 
-      type: 'area', 
-      height: 350,
-      stacked: true,
-      background: 'transparent',
-      toolbar: { show: false },
-      animations: {
-        enabled: true,
-        speed: 1500,
-        animateGradually: {
-          enabled: true,
-          delay: 300
-        }
-      },
-      dropShadow: {
-        enabled: true,
-        top: 0,
-        left: 0,
-        blur: 10,
-        opacity: 0.1
-      }
-    },
-    colors: ['#3B82F6', '#10B981', '#F43F5E'],
-    fill: {
-      type: 'gradient',
-      gradient: {
-        type: 'vertical',
-        shadeIntensity: 1,
-        opacityFrom: 0.7,
-        opacityTo: 0.2,
-        stops: [0, 100],
-        colorStops: [
-          {
-            offset: 0,
-            color: '#3B82F6',
-            opacity: 0.9
-          },
-          {
-            offset: 50,
-            color: '#3B82F6',
-            opacity: 0.5
-          },
-          {
-            offset: 100,
-            color: '#3B82F6',
-            opacity: 0.1
-          }
-        ]
-      }
-    },
-    stroke: {
-      curve: 'smooth',
-      width: 4,
-      lineCap: 'round'
-    },
-    grid: {
-      show: true,
-      borderColor: 'rgba(0,0,0,0.05)',
-      strokeDashArray: 4,
-      padding: {
-        left: 20,
-        right: 20
-      },
-      xaxis: {
-        lines: {
-          show: false
-        }
-      },
-      yaxis: {
-        lines: {
-          show: true
-        }
-      }
-    },
-    xaxis: {
-      type: 'datetime',
-      categories: [
-        '2024-01-01', 
-        '2024-01-02', 
-        '2024-01-03', 
-        '2024-01-04', 
-        '2024-01-05', 
-        '2024-01-06', 
-        '2024-01-07'
-      ],
-      labels: {
-        format: 'dd MMM',
-        style: {
-          colors: '#888',
-          fontSize: '10px'
-        }
-      },
-      axisBorder: {
-        show: false
-      },
-      axisTicks: {
-        show: false
-      }
-    },
-    yaxis: {
-      labels: {
-        formatter: function(val) {
-          return val.toFixed(0)
-        },
-        style: {
-          colors: '#888',
-          fontSize: '10px'
-        }
-      }
-    },
-    dataLabels: {
-      enabled: false
-    },
-    tooltip: {
-      theme: 'dark',
-      x: {
-        format: 'dd MMM yyyy'
-      },
-      y: {
-        formatter: function(val, { series, seriesIndex, dataPointIndex }) {
-          return `${series[seriesIndex][dataPointIndex]}`
-        },
-        title: {
-          formatter: (seriesName) => seriesName
-        }
-      },
-      marker: {
-        show: true
-      }
-    },
-    legend: {
-      position: 'top',
-      horizontalAlign: 'left',
-      offsetX: 40,
-      labels: {
-        colors: '#888'
-      }
-    }
-  })
-
-  const [systemLoadChartOptions, setSystemLoadChartOptions] = useState<ApexOptions>({
-    series: [
-      {
-        name: 'Тесты',
-        data: [65, 70, 62, 68, 72, 60, 66]
-      },
-      {
-        name: 'Результаты',
-        data: [45, 50, 42, 48, 52, 40, 46]
-      },
-      {
-        name: 'Пользователи',
-        data: [30, 35, 28, 32, 38, 26, 32]
-      }
-    ],
-    chart: { 
-      type: 'line', 
-      height: 350,
-      toolbar: { show: false },
-      zoom: {
-        enabled: false
-      },
-      animations: {
-        enabled: true,
-        speed: 1500,
-        animateGradually: {
-          enabled: true,
-          delay: 300
-        }
-      },
-      dropShadow: {
-        enabled: true,
-        top: 0,
-        left: 0,
-        blur: 10,
-        opacity: 0.1
-      }
-    },
-    colors: ['#3B82F6', '#10B981', '#F43F5E'],
-    stroke: {
-      curve: 'smooth',
-      width: 4,
-      lineCap: 'round'
-    },
-    fill: {
-      type: 'gradient',
-      gradient: {
-        shade: 'dark',
-        type: 'horizontal',
-        shadeIntensity: 0.5,
-        gradientToColors: ['#3B82F6', '#10B981', '#F43F5E'],
-        opacityFrom: 0.7,
-        opacityTo: 0.2,
-        stops: [0, 100]
-      }
-    },
-    markers: {
-      size: 6,
-      colors: ['#3B82F6', '#10B981', '#F43F5E'],
-      strokeColors: '#ffffff',
-      strokeWidth: 2,
-      hover: {
-        size: 10,
-        sizeOffset: 3
-      }
-    },
-    grid: {
-      show: true,
-      borderColor: 'rgba(0,0,0,0.05)',
-      strokeDashArray: 4,
-      padding: {
-        left: 20,
-        right: 20
-      },
-      xaxis: {
-        lines: {
-          show: false
-        }
-      },
-      yaxis: {
-        lines: {
-          show: true
-        }
-      }
-    },
-    xaxis: {
-      type: 'datetime',
-      categories: [
-        '2024-01-01', 
-        '2024-01-02', 
-        '2024-01-03', 
-        '2024-01-04', 
-        '2024-01-05', 
-        '2024-01-06', 
-        '2024-01-07'
-      ],
-      labels: {
-        format: 'dd MMM',
-        style: {
-          colors: '#888',
-          fontSize: '10px'
-        }
-      },
-      axisBorder: {
-        show: false
-      },
-      axisTicks: {
-        show: false
-      }
-    },
-    yaxis: {
-      labels: {
-        formatter: function(val) {
-          return val.toFixed(0)
-        },
-        style: {
-          colors: '#888',
-          fontSize: '10px'
-        }
-      }
-    },
-    dataLabels: {
-      enabled: false
-    },
-    tooltip: {
-      theme: 'dark',
-      x: {
-        format: 'dd MMM yyyy'
-      },
-      y: {
-        formatter: function(val, { series, seriesIndex, dataPointIndex }) {
-          return `${series[seriesIndex][dataPointIndex]}`
-        },
-        title: {
-          formatter: (seriesName) => seriesName
-        }
-      },
-      marker: {
-        show: true
-      }
-    },
-    legend: {
-      position: 'top',
-      horizontalAlign: 'left',
-      offsetX: 40,
-      labels: {
-        colors: '#888'
-      }
-    }
-  })
-
   useEffect(() => {
-    setUserActivityChartOptions(prevOptions => 
-      getChartTheme(prevOptions)
+    if (dashboardData) {
+      const userActivityChartOptions = getChartTheme(dashboardData.userActivityChartOptions)
+      const systemLoadChartOptions = getChartTheme(dashboardData.systemLoadChartOptions)
+      setUserActivityChartOptions(userActivityChartOptions)
+      setSystemLoadChartOptions(systemLoadChartOptions)
+    }
+  }, [theme, dashboardData])
+
+  const [userActivityChartOptions, setUserActivityChartOptions] = useState<ApexOptions>({})
+  const [systemLoadChartOptions, setSystemLoadChartOptions] = useState<ApexOptions>({})
+
+  if (isLoading) {
+    return (
+      <div className="flex justify-center items-center min-h-screen">
+        <Spinner size="lg" />
+      </div>
     )
-    setSystemLoadChartOptions(prevOptions => 
-      getChartTheme(prevOptions)
-    )
-  }, [theme])
+  }
 
   const dashboardStats = [
     { 
       icon: <Users />, 
       title: 'Всего пользователей', 
-      value: '250',
+      value: dashboardData?.dashboardStats.totalUsers.toString() || '0',
       color: 'primary'
     },
     { 
       icon: <School />, 
       title: 'Количество групп', 
-      value: '15',
+      value: dashboardData?.dashboardStats.groupsCount.toString() || '0',
       color: 'secondary'
     },
     { 
       icon: <BookOpen />, 
       title: 'Активных тестов', 
-      value: '22',
+      value: dashboardData?.dashboardStats.activeTests.toString() || '0',
       color: 'success'
     },
     { 
       icon: <ClipboardList />, 
       title: 'Пройденных тестов', 
-      value: '345',
+      value: dashboardData?.dashboardStats.completedTests.toString() || '0',
       color: 'warning'
     }
   ]
@@ -427,33 +157,6 @@ export default function AdminDashboard() {
     <div className="space-y-6 p-4 sm:p-6 bg-gradient-to-br from-blue-50 to-blue-100 dark:bg-gradient-to-br dark:from-gray-900 dark:to-gray-800 min-h-screen">
       <div className="flex flex-col sm:flex-row justify-between items-center space-y-4 sm:space-y-0">
         <h1 className="text-xl sm:text-2xl font-bold text-gray-800 dark:text-white w-full text-center sm:text-left">Панель администратора</h1>
-        <Select
-          label="Период"
-          selectedKeys={[selectedPeriod]}
-          onSelectionChange={(keys) => {
-            const selected = Array.from(keys)[0] as string
-            setSelectedPeriod(selected)
-          }}
-          className="w-full sm:max-w-xs"
-          classNames={{
-            trigger: "bg-white/70 dark:bg-gray-800/70 backdrop-blur-md",
-            label: "text-gray-600 dark:text-gray-300",
-            value: "text-gray-800 dark:text-white"
-          }}
-        >
-          {periods.map((period) => (
-            <SelectItem 
-              key={period.key} 
-              value={period.key}
-              classNames={{
-                base: "text-gray-800 dark:text-white hover:bg-blue-50 dark:hover:bg-gray-700",
-                selectedIcon: "text-blue-600 dark:text-blue-400"
-              }}
-            >
-              {period.label}
-            </SelectItem>
-          ))}
-        </Select>
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
@@ -521,18 +224,18 @@ export default function AdminDashboard() {
           <Card className="h-full dark:bg-gray-800/70 bg-white/70 backdrop-blur-md">
             <CardHeader className="text-md sm:text-lg font-semibold text-gray-700 dark:text-white">Активность пользователей</CardHeader>
             <CardBody>
-              <Chart 
-                options={{
-                  ...userActivityChartOptions,
-                  chart: {
-                    ...userActivityChartOptions.chart,
-                    height: 250 // Reduced height for mobile
-                  }
-                }} 
-                series={userActivityChartOptions.series} 
-                type="area" 
-                height={250} 
-              />
+              {dashboardData ? (
+                <Chart 
+                  options={userActivityChartOptions} 
+                  series={dashboardData.userActivitySeries} 
+                  type="area" 
+                  height={250} 
+                />
+              ) : (
+                <div className="flex justify-center items-center h-full">
+                  <Spinner size="lg" />
+                </div>
+              )}
             </CardBody>
           </Card>
         </motion.div>
@@ -548,18 +251,18 @@ export default function AdminDashboard() {
           <Card className="h-full dark:bg-gray-800/70 bg-white/70 backdrop-blur-md">
             <CardHeader className="text-md sm:text-lg font-semibold text-gray-700 dark:text-white">Нагрузка системы</CardHeader>
             <CardBody>
-              <Chart 
-                options={{
-                  ...systemLoadChartOptions,
-                  chart: {
-                    ...systemLoadChartOptions.chart,
-                    height: 250 // Reduced height for mobile
-                  }
-                }} 
-                series={systemLoadChartOptions.series} 
-                type="line" 
-                height={250} 
-              />
+              {dashboardData ? (
+                <Chart 
+                  options={systemLoadChartOptions} 
+                  series={dashboardData.systemLoadSeries} 
+                  type="line" 
+                  height={250} 
+                />
+              ) : (
+                <div className="flex justify-center items-center h-full">
+                  <Spinner size="lg" />
+                </div>
+              )}
             </CardBody>
           </Card>
         </motion.div>
