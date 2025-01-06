@@ -52,6 +52,7 @@ CREATE TABLE "Test" (
     "title" TEXT NOT NULL,
     "description" TEXT,
     "authorId" TEXT NOT NULL,
+    "maxScore" INTEGER NOT NULL DEFAULT 0,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 

@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect } from 'react'
 import { 
   Table, 
   TableHeader, 
@@ -8,23 +8,37 @@ import {
   TableBody, 
   TableRow, 
   TableCell,
-  Button,
-  Chip,
   Select,
   SelectItem,
-  Input
+  Input,
+  Modal, 
+  ModalContent, 
+  ModalHeader, 
+  ModalBody, 
+  ModalFooter, 
+  Button,
+  useDisclosure,
+  Card,
+  CardBody,
+  Chip
 } from "@nextui-org/react"
-import { 
-  FileText, 
-  Send 
-} from 'lucide-react'
 import { toast } from 'sonner'
+
+interface TestResult {
+  id: string
+  testName: string
+  score: number
+  maxScore: number
+  passedAt: string
+}
 
 interface Student {
   id: string
   name: string
   group: string
-  testStatus: 'not_started' | 'in_progress' | 'completed'
+  email?: string
+  phone?: string
+  testResults?: TestResult[] | string[] | undefined
 }
 
 interface Group {
@@ -42,12 +56,8 @@ export default function CuratorStudents() {
   const [groups, setGroups] = useState<Group[]>([])
   const [selectedGroup, setSelectedGroup] = useState<string>('')
   const [students, setStudents] = useState<Student[]>([])
-  const [selectedStudents, setSelectedStudents] = useState<string[]>([])
-  const [testLink, setTestLink] = useState<string>('')
-
-  // Polling state and refs
-  const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(null)
-  const isPollingRef = useRef(false)
+  const [selectedStudent, setSelectedStudent] = useState<Student | null>(null)
+  const { isOpen, onOpen, onOpenChange } = useDisclosure()
 
   // Fetch curator's groups on component mount
   useEffect(() => {
@@ -90,69 +100,6 @@ export default function CuratorStudents() {
     fetchCuratorGroups()
   }, [])
 
-  // Start and stop polling when group changes
-  useEffect(() => {
-    // Stop any existing polling
-    if (pollingInterval) {
-      clearInterval(pollingInterval)
-    }
-
-    // Start new polling if group is selected
-    if (selectedGroup) {
-      startPollingTestStatuses()
-    }
-
-    // Cleanup on unmount
-    return () => {
-      if (pollingInterval) {
-        clearInterval(pollingInterval)
-      }
-    }
-  }, [selectedGroup])
-
-  // Function to start polling test statuses
-  const startPollingTestStatuses = () => {
-    // Prevent multiple polling instances
-    if (isPollingRef.current) return
-
-    const interval = setInterval(async () => {
-      if (!selectedGroup) return
-
-      try {
-        isPollingRef.current = true
-
-        const response = await fetch(`/api/curator/groups/${selectedGroup}/test-statuses`)
-        
-        if (response.ok) {
-          const testStatuses = await response.json()
-          
-          // Update students' test statuses
-          setStudents(prevStudents => 
-            prevStudents.map(student => {
-              const studentStatus = testStatuses.find((status: any) => status.studentId === student.id)
-              return studentStatus 
-                ? { 
-                    ...student, 
-                    testStatus: studentStatus.status === 'COMPLETED' 
-                      ? 'completed' 
-                      : studentStatus.status === 'ACTIVE'
-                        ? 'in_progress'
-                        : 'not_started'
-                  }
-                : student
-            })
-          )
-        }
-      } catch (error) {
-        console.error('Error polling test statuses:', error)
-      } finally {
-        isPollingRef.current = false
-      }
-    }, 5000) // Poll every 5 seconds
-
-    setPollingInterval(interval)
-  }
-
   // Fetch students when a group is selected
   useEffect(() => {
     const fetchStudents = async () => {
@@ -164,7 +111,7 @@ export default function CuratorStudents() {
           ? (selectedGroup as Group).id 
           : selectedGroup
 
-        const response = await fetch(`/api/curator/groups/${groupId}/students`)
+        const response = await fetch(`/api/curator/groups/${groupId}/students?includeDetails=true`)
 
         let errorDetails = null
         if (!response.ok) {
@@ -201,58 +148,6 @@ export default function CuratorStudents() {
     fetchStudents()
   }, [selectedGroup])
 
-  const getStatusColor = (status: Student['testStatus']) => {
-    switch(status) {
-      case 'not_started': return 'default'
-      case 'in_progress': return 'warning'
-      case 'completed': return 'success'
-    }
-  }
-
-  const sendTestLink = async () => {
-    if (selectedStudents.length === 0) {
-      toast.error('Выберите студентов для отправки ссылки')
-      return
-    }
-
-    try {
-      const response = await fetch('/api/curator/students/send-test-link', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ studentIds: selectedStudents })
-      })
-
-      if (!response.ok) {
-        throw new Error('Не удалось отправить ссылки')
-      }
-
-      const selectedStudentNames = students
-        .filter(student => selectedStudents.includes(student.id))
-        .map(student => student.name)
-        .join(', ')
-
-      toast.success(`Ссылки отправлены студентам: ${selectedStudentNames}`)
-      
-      // Clear selection after successful send
-      setSelectedStudents([])
-    } catch (error) {
-      console.error('Ошибка отправки ссылок:', error)
-      toast.error('Не удалось отправить ссылки', {
-        description: error instanceof Error ? error.message : 'Неизвестная ошибка'
-      })
-    }
-  }
-
-  const toggleStudentSelection = (studentId: string) => {
-    setSelectedStudents(prev => 
-      prev.includes(studentId)
-        ? prev.filter(id => id !== studentId)
-        : [...prev, studentId]
-    )
-  }
-
   const handlePaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
     e.preventDefault()
     const pastedText = e.clipboardData.getData('text')
@@ -276,8 +171,7 @@ export default function CuratorStudents() {
         updatedStudents.push({
           id: `new-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
           name: '',
-          group: selectedGroup,
-          testStatus: 'not_started'
+          group: selectedGroup
         })
       }
 
@@ -303,7 +197,7 @@ export default function CuratorStudents() {
 
   const renderInput = (student: Student, index: number, field: keyof Student, placeholder: string) => (
     <Input
-      value={student[field] || ''}
+      value={student[field] !== undefined ? String(student[field]) : ''}
       disabled
       onChange={(e) => handleStudentChange(index, field, e.target.value)}
       placeholder={placeholder}
@@ -314,38 +208,37 @@ export default function CuratorStudents() {
     />
   )
 
-  const generateTestLink = async () => {
-    try {
-      const response = await fetch('/api/tests/generate-link', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
+  const openStudentDetails = (student: Student) => {
+    setSelectedStudent(student)
+    
+    // Fetch test results for the selected student
+    const fetchStudentTestResults = async () => {
+      try {
+        const response = await fetch(`/api/curator/students/${student.id}/test-results`)
+        
+        if (!response.ok) {
+          const errorText = await response.text()
+          console.error('Test results fetch error:', errorText)
+          throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`)
         }
-      })
 
-      if (!response.ok) {
-        throw new Error('Не удалось сгенерировать ссылку')
+        const testResults = await response.json()
+        
+        // Update the selected student with fetched test results
+        setSelectedStudent(prev => prev ? {
+          ...prev,
+          testResults: testResults
+        } : null)
+      } catch (error) {
+        console.error('Detailed error in fetchStudentTestResults:', error)
+        toast.error('Не удалось загрузить результаты тестов', {
+          description: error instanceof Error ? error.message : 'Проверьте подключение к серверу'
+        })
       }
-
-      const data = await response.json()
-      
-      // Construct full URL
-      const fullTestLink = `${window.location.origin}/test/${data.linkId}`
-      
-      // Copy to clipboard
-      await navigator.clipboard.writeText(fullTestLink)
-      
-      // Set test link state and show toast
-      setTestLink(fullTestLink)
-      toast.success('Ссылка на тест скопирована в буфер обмена', {
-        description: 'Теперь вы можете вставить ссылку в чат студентам'
-      })
-    } catch (error) {
-      console.error('Ошибка генерации ссылки:', error)
-      toast.error('Не удалось сгенерировать ссылку', {
-        description: error instanceof Error ? error.message : 'Неизвестная ошибка'
-      })
     }
+
+    fetchStudentTestResults()
+    onOpen()
   }
 
   return (
@@ -356,7 +249,7 @@ export default function CuratorStudents() {
       <div className="max-w-6xl mx-auto space-y-6">
         <h1 className="text-2xl font-bold text-gray-800 dark:text-white">Студенты</h1>
 
-        {/* Group Selection and Test Link */}
+        {/* Group Selection */}
         <div className="mb-4 flex items-center space-x-4">
           <Select
             label="Выберите группу"
@@ -370,32 +263,10 @@ export default function CuratorStudents() {
           >
             {groups.map((group) => (
               <SelectItem key={group.id} value={group.id}>
-                {group.code || group.name}
+                {group.code ? `${group.code} - ${group.name}` : group.name}
               </SelectItem>
             ))}
           </Select>
-
-          <Button 
-            color="primary" 
-            onClick={generateTestLink}
-          >
-            Сгенерировать ссылку на тест
-          </Button>
-
-          {testLink && (
-            <div className="text-sm text-gray-600 dark:text-gray-300">
-              Ссылка скопирована: {testLink}
-            </div>
-          )}
-
-          {selectedStudents.length > 0 && (
-            <Button 
-              color="primary" 
-              onClick={sendTestLink}
-            >
-              Отправить ссылку ({selectedStudents.length})
-            </Button>
-          )}
         </div>
 
         {selectedGroup && (
@@ -407,52 +278,117 @@ export default function CuratorStudents() {
               th: "bg-blue-50 dark:bg-gray-700 text-gray-800 dark:text-white",
               tr: "hover:bg-gray-50 dark:hover:bg-gray-700"
             }}
-            selectionMode="multiple"
-            selectedKeys={new Set(selectedStudents)}
-            onSelectionChange={(keys) => {
-              if (keys === 'all') {
-                setSelectedStudents(students.map(s => s.id))
-              } else {
-                setSelectedStudents(Array.from(keys) as string[])
-              }
+            onRowAction={(key) => {
+              const student = students.find(s => s.id === key)
+              if (student) openStudentDetails(student)
             }}
           >
             <TableHeader>
               <TableColumn>ФИО</TableColumn>
-              <TableColumn>Статус</TableColumn>
             </TableHeader>
             <TableBody>
-              {students.map((student) => (
+              {students.map((student, index) => (
                 <TableRow key={student.id}>
                   <TableCell>
-                    <Input
-                      value={student.name || ''}
-                      disabled
-                      placeholder="Введите ФИО"
-                      size="sm"
-                      classNames={{
-                        input: "text-gray-800 dark:text-white placeholder:text-gray-500 dark:placeholder:text-gray-400 transition-colors duration-300"
-                      }}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <Chip 
-                      color={
-                        student.testStatus === 'completed' ? 'success' : 
-                        student.testStatus === 'in_progress' ? 'warning' : 
-                        'default'
-                      }
-                    >
-                      {student.testStatus === 'completed' ? 'Завершен' : 
-                       student.testStatus === 'in_progress' ? 'В процессе' : 
-                       'Не начат'}
-                    </Chip>
+                    {renderInput(student, index, 'name', 'Введите ФИО')}
                   </TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
         )}
+
+        {/* Student Details Modal */}
+        <Modal 
+          isOpen={isOpen} 
+          onOpenChange={onOpenChange}
+          size="5xl"
+          scrollBehavior="inside"
+        >
+          <ModalContent>
+            {(onClose) => (
+              <>
+                <ModalHeader className="flex flex-col gap-1">
+                  Информация о студенте
+                </ModalHeader>
+                <ModalBody>
+                  {selectedStudent && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {/* Personal Information */}
+                      <Card>
+                        <CardBody>
+                          <h2 className="text-xl font-semibold mb-4">Личные данные</h2>
+                          <div className="space-y-2">
+                            <p><strong>ФИО:</strong> {selectedStudent.name}</p>
+                            <p><strong>Группа:</strong> {groups.find(g => g.id === selectedStudent.group)?.code ? 
+                              `${groups.find(g => g.id === selectedStudent.group)?.code} - ${groups.find(g => g.id === selectedStudent.group)?.name}` : 
+                              selectedStudent.group}</p>
+                            {selectedStudent.email && (
+                              <p><strong>Email:</strong> {selectedStudent.email}</p>
+                            )}
+                            {selectedStudent.phone && (
+                              <p><strong>Телефон:</strong> {selectedStudent.phone}</p>
+                            )}
+                          </div>
+                        </CardBody>
+                      </Card>
+
+                      {/* Test Results */}
+                      <Card>
+                        <CardBody>
+                          <h2 className="text-xl font-semibold mb-4">Результаты тестов</h2>
+                          {selectedStudent.testResults && selectedStudent.testResults.length > 0 ? (
+                            <Table 
+                              aria-label="Test results"
+                              classNames={{
+                                base: "bg-white dark:bg-gray-800",
+                                th: "bg-blue-50 dark:bg-gray-700 text-gray-800 dark:text-white"
+                              }}
+                            >
+                              <TableHeader>
+                                <TableColumn>Название теста</TableColumn>
+                                <TableColumn>Результат</TableColumn>
+                                <TableColumn>Дата</TableColumn>
+                              </TableHeader>
+                              <TableBody>
+                                {selectedStudent.testResults.filter((result): result is TestResult => typeof result !== 'string').map((result) => (
+                                  <TableRow key={result.id}>
+                                    <TableCell>{result.testName}</TableCell>
+                                    <TableCell>
+                                      <Chip 
+                                        color={
+                                          (result.score / result.maxScore) >= 0.7 ? 'success' : 
+                                          (result.score / result.maxScore) >= 0.4 ? 'warning' : 
+                                          'danger'
+                                        }
+                                      >
+                                        {result.score} / {result.maxScore}
+                                      </Chip>
+                                    </TableCell>
+                                    <TableCell>
+                                      {new Date(result.passedAt).toLocaleDateString()}
+                                    </TableCell>
+                                  </TableRow>
+                                ))}
+                              </TableBody>
+                            </Table>
+                          ) : (
+                            <p className="text-gray-500">Нет пройденных тестов</p>
+                          )}
+                        </CardBody>
+                      </Card>
+                    </div>
+                  )}
+                </ModalBody>
+                <ModalFooter>
+                  <Button color="danger" variant="light" onPress={onClose}>
+                    Закрыть
+                  </Button>
+                </ModalFooter>
+              </>
+            )}
+          </ModalContent>
+        </Modal>
       </div>
     </div>
   )

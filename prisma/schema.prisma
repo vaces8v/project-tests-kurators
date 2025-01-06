@@ -68,16 +68,18 @@ model Student {
 }
 
 model Test {
-  id            String   @id @default(cuid())
-  title         String
-  description   String?
-  author        User     @relation(fields: [authorId], references: [id])
-  authorId      String
-  questions     Question[]
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  authorId    String
+  maxScore    Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  author      User           @relation(fields: [authorId], references: [id])
+  questions   Question[]
   testAssignments TestAssignment[]
   testResults   TestResult[]
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
 }
 
 model Question {

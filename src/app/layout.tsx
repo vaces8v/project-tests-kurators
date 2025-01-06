@@ -7,7 +7,7 @@ import { ToasterProvider } from "@/components/providers/Toaster";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Login Page",
+  title: "Kurators Test",
   description: "Authentication page",
 };
 

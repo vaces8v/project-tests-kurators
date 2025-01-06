@@ -59,37 +59,6 @@ export default function TestTakePage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isStarted, setIsStarted] = useState(false)
 
-  // Ref to prevent multiple status updates
-  const statusUpdateRef = useRef(false)
-
-  // Function to update test status
-  const updateTestStatus = async (status: 'ACTIVE' | 'COMPLETED') => {
-    if (statusUpdateRef.current || !selectedStudent || !testAssignment) return
-    statusUpdateRef.current = true
-
-    try {
-      const response = await fetch('/api/test-status', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          studentId: selectedStudent,
-          testId: testAssignment.test.id,
-          status
-        })
-      })
-
-      if (!response.ok) {
-        console.error('Failed to update test status')
-      }
-    } catch (error) {
-      console.error('Error updating test status:', error)
-    } finally {
-      statusUpdateRef.current = false
-    }
-  }
-
   useEffect(() => {
     async function fetchTestDetails() {
       try {
@@ -167,9 +136,6 @@ export default function TestTakePage() {
       })
 
       if (response.ok) {
-        // Update status to COMPLETED before redirecting
-        await updateTestStatus('COMPLETED')
-        
         toast.success('Тест отправлен успешно!')
         router.push('/test-completed')
       } else {
@@ -305,7 +271,6 @@ export default function TestTakePage() {
                       return
                     }
                     setIsStarted(true)
-                    updateTestStatus('ACTIVE')
                   }}
                 >
                   Начать тест
@@ -371,12 +336,10 @@ export default function TestTakePage() {
                                         return (
                                           <label
                                             key={option.id}
-                                            className={`
-                                              flex items-center p-4 rounded-xl border transition-colors 
+                                            className={`flex items-center p-4 rounded-xl border transition-colors 
                                               ${isSelected
                                                 ? 'bg-green-50 border-green-300'
-                                                : 'bg-white border-gray-200 hover:bg-gray-50'}
-                                            `}
+                                                : 'bg-white border-gray-200 hover:bg-gray-50'}`}
                                           >
                                             <Checkbox
                                               isSelected={isSelected}
@@ -393,10 +356,8 @@ export default function TestTakePage() {
                                                 );
                                               }}
                                             />
-                                            <span className={`
-                                              font-medium 
-                                              ${isSelected ? 'text-green-900' : 'text-gray-900'}
-                                            `}>
+                                            <span className={`font-medium 
+                                              ${isSelected ? 'text-green-900' : 'text-gray-900'}`}>
                                               {option.text}
                                             </span>
                                           </label>

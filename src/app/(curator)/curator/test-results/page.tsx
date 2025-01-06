@@ -75,11 +75,39 @@ export default function TestResultsPage() {
 
     async function fetchTestResults() {
       try {
+        console.log('Fetching test results for group:', selectedGroup)
         const res = await fetch(`/api/curator/test-results?groupId=${selectedGroup}`)
-        const data = await res.json()
+        
+        // Log raw response
+        const responseText = await res.text()
+        console.log('Raw response:', responseText)
+
+        // Try parsing the response
+        let data;
+        try {
+          data = JSON.parse(responseText)
+        } catch (parseError) {
+          console.error('Failed to parse response:', parseError)
+          toast.error('Ошибка парсинга результатов тестов', {
+            description: responseText
+          })
+          return
+        }
+
+        console.log('Parsed test results:', data)
+        
+        // Additional checks
+        if (!data || data.length === 0) {
+          console.warn('No test results found for group:', selectedGroup)
+          toast.info('Нет результатов тестов для этой группы')
+        }
+        
         setTestResults(data)
       } catch (error) {
-        toast.error('Не удалось загрузить результаты тестов')
+        console.error('Detailed error fetching test results:', error)
+        toast.error('Не удалось загрузить результаты тестов', {
+          description: error instanceof Error ? error.message : 'Неизвестная ошибка'
+        })
       }
     }
     fetchTestResults()
