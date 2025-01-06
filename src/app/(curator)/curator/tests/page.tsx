@@ -16,12 +16,20 @@ import {
   CardBody,
   Divider,
   Link,
-  Spinner
+  Spinner,
+  Modal,
+  ModalContent,
+  ModalHeader,
+  ModalBody,
+  ModalFooter,
+  useDisclosure
 } from "@nextui-org/react"
 import { 
   Link2, 
   FileText,
-  List
+  List,
+  CheckCircle2,
+  XCircle
 } from 'lucide-react'
 import { useSession } from 'next-auth/react'
 import { toast } from 'sonner'
@@ -50,6 +58,8 @@ export default function CuratorTests() {
 
   const [tests, setTests] = useState<Test[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [selectedTest, setSelectedTest] = useState<Test | null>(null)
+  const { isOpen, onOpen, onOpenChange } = useDisclosure()
 
   useEffect(() => {
     if (status === 'authenticated' && session?.user?.role !== 'CURATOR') {
@@ -85,9 +95,44 @@ export default function CuratorTests() {
     }
   }, [status, session])
 
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text)
-    toast.success('Link copied to clipboard')
+  const handleStatusChange = async (test: Test, newStatus: 'ACTIVE' | 'COMPLETED' | 'DRAFT') => {
+    try {
+      const response = await fetch(`/api/curator/tests/${test.id}/status`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ status: newStatus })
+      })
+
+      const data = await response.json()
+
+      if (response.ok) {
+        // Update the test status in the local state
+        setTests(prevTests => 
+          prevTests.map(t => 
+            t.id === test.id ? { ...t, status: newStatus } : t
+          )
+        )
+        toast.success('Статус теста обновлен', {
+          description: `Тест "${test.title}" ${newStatus === 'COMPLETED' ? 'завершен' : 'активирован'}`
+        })
+        onOpenChange()
+      } else {
+        toast.error('Ошибка обновления статуса', {
+          description: data.error || 'Не удалось обновить статус теста'
+        })
+      }
+    } catch (error) {
+      toast.error('Ошибка сети', {
+        description: 'Не удалось обновить статус теста'
+      })
+    }
+  }
+
+  const openStatusChangeModal = (test: Test) => {
+    setSelectedTest(test)
+    onOpen()
   }
 
   const getStatusColor = (status: Test['status']) => {
@@ -140,14 +185,17 @@ export default function CuratorTests() {
                       </p>
                     </div>
                   </div>
-                  <Chip 
-                    color={getStatusColor(test.status)} 
-                    variant="flat"
+                  <Button 
+                    variant="light" 
+                    color={test.status === 'COMPLETED' ? 'success' : 'warning'}
+                    onClick={() => openStatusChangeModal(test)}
+                    className="flex items-center gap-2"
                   >
-                    {test.status === 'ACTIVE' ? 'Активен' : 
-                     test.status === 'COMPLETED' ? 'Завершен' : 
-                     'Черновик'}
-                  </Chip>
+                    {test.status === 'COMPLETED' ? <CheckCircle2 size={16} /> : <XCircle size={16} />}
+                    <span className="text-sm">
+                      {test.status === 'COMPLETED' ? 'Пройден' : 'Не пройден'}
+                    </span>
+                  </Button>
                 </CardHeader>
                 <Divider />
                 <CardBody className="flex flex-row justify-between items-center">
@@ -165,7 +213,6 @@ export default function CuratorTests() {
                     </Tooltip>
                     <Tooltip content="Скопировать ссылку на тест">
                       <Button 
-                        isIconOnly 
                         variant="light" 
                         color="primary"
                         onPress={() => {
@@ -175,9 +222,10 @@ export default function CuratorTests() {
                             description: testLink
                           })
                         }}
-                        className="text-gray-600 hover:text-blue-600"
+                        className="text-gray-400 hover:text-blue-600 flex items-center gap-2"
                       >
                         <Link2 size={16} />
+                        <span className="text-sm">Скопировать ссылку на тест</span>
                       </Button>
                     </Tooltip>
                     <div className="text-sm text-gray-600 dark:text-gray-300">
@@ -192,6 +240,46 @@ export default function CuratorTests() {
           </div>
         )}
       </div>
+
+      <Modal isOpen={isOpen} onOpenChange={onOpenChange}>
+        <ModalContent>
+          {(onClose) => (
+            <>
+              <ModalHeader className="flex flex-col gap-1">
+                Изменение статуса теста
+              </ModalHeader>
+              <ModalBody>
+                <p>
+                  Вы уверены, что хотите {selectedTest?.status === 'COMPLETED' ? 'отменить завершение' : 'завершить'} тест "{selectedTest?.title}"?
+                </p>
+                <p className="text-sm text-gray-500">
+                  {selectedTest?.status === 'COMPLETED' 
+                    ? 'Тест будет возвращен в активный статус.' 
+                    : 'Тест будет отмечен как пройденный.'}
+                </p>
+              </ModalBody>
+              <ModalFooter>
+                <Button color="danger" variant="light" onPress={onClose}>
+                  Отмена
+                </Button>
+                <Button 
+                  color="primary" 
+                  onPress={() => {
+                    if (selectedTest) {
+                      handleStatusChange(
+                        selectedTest, 
+                        selectedTest.status === 'COMPLETED' ? 'ACTIVE' : 'COMPLETED'
+                      )
+                    }
+                  }}
+                >
+                  Подтвердить
+                </Button>
+              </ModalFooter>
+            </>
+          )}
+        </ModalContent>
+      </Modal>
     </div>
   )
 }

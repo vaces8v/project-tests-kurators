@@ -79,7 +79,7 @@ export default function LoginPage() {
       if (session?.user) {
         const redirectUrl = session.user.role === 'ADMIN' 
           ? '/a/dashboard' 
-          : '/curator/dashboard'
+          : '/curator/tests'
         
         
         router.push(redirectUrl)

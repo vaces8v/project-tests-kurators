@@ -25,6 +25,12 @@ enum AssignmentStatus {
   ARCHIVED
 }
 
+enum TestStatus {
+  ACTIVE
+  COMPLETED
+  DRAFT
+}
+
 model User {
   id        String   @id @default(cuid())
   name      String
@@ -73,6 +79,7 @@ model Test {
   description String?
   authorId    String
   maxScore    Int      @default(0)
+  status      TestStatus  @default(DRAFT)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 

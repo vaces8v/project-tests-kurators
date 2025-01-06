@@ -42,11 +42,6 @@ export default function CuratorLayout({ children }: { children: React.ReactNode 
 
   const navItems = [
     { 
-      href: '/curator/dashboard', 
-      icon: <Home />, 
-      label: 'Главная' 
-    },
-    { 
       href: '/curator/tests', 
       icon: <List />, 
       label: 'Тесты' 
