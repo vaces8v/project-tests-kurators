@@ -65,13 +65,75 @@ export default function AdminDashboard() {
     ...baseOptions,
     chart: {
       ...baseOptions.chart,
-      background: theme === 'dark' ? 'transparent' : 'transparent'
+      background: 'transparent',
+      animations: {
+        enabled: true,
+        speed: 800,
+        animateGradually: {
+          enabled: true,
+          delay: 150
+        },
+        dynamicAnimation: {
+          enabled: true,
+          speed: 350
+        }
+      },
+      toolbar: {
+        show: false
+      },
+      zoom: {
+        enabled: false
+      },
+      offsetX: 0,
+      offsetY: 0,
+      sparkline: {
+        enabled: false
+      }
+    },
+    stroke: {
+      curve: 'smooth',
+      width: 3,
+      lineCap: 'round'
+    },
+    fill: {
+      type: 'gradient',
+      gradient: {
+        shade: theme === 'dark' ? 'dark' : 'light',
+        type: 'vertical',
+        shadeIntensity: 0.5,
+        gradientToColors: theme === 'dark' 
+          ? ['rgba(59, 130, 246, 0.3)', 'rgba(147, 51, 234, 0.3)']
+          : ['rgba(59, 130, 246, 0.5)', 'rgba(147, 51, 234, 0.5)'],
+        stops: [0, 90, 100]
+      }
     },
     title: {
       ...baseOptions.title,
       style: {
         fontSize: '16px',
-        color: theme === 'dark' ? '#ffffff' : '#333333'
+        fontWeight: 'bold',
+        color: theme === 'dark' ? '#e5e7eb' : '#1f2937'
+      }
+    },
+    grid: {
+      show: true,
+      borderColor: theme === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
+      strokeDashArray: 3,
+      padding: {
+        top: 0,
+        right: 0,
+        bottom: 0,
+        left: 0
+      },
+      xaxis: {
+        lines: {
+          show: true
+        }
+      },
+      yaxis: {
+        lines: {
+          show: true
+        }
       }
     },
     xaxis: {
@@ -79,16 +141,35 @@ export default function AdminDashboard() {
       categories: dashboardData?.dateLabels || [],
       labels: {
         style: {
-          colors: theme === 'dark' ? '#ffffff' : '#333333'
-        }
+          colors: theme === 'dark' ? '#9ca3af' : '#4b5563',
+          fontSize: '10px'
+        },
+        rotate: 0,
+        rotateAlways: false,
+        trim: true,
+      },
+      tickAmount: dashboardData?.dateLabels?.length || 7,
+      axisTicks: {
+        show: false
+      },
+      tooltip: {
+        enabled: false
       }
     },
     yaxis: {
       ...baseOptions.yaxis,
       labels: {
         style: {
-          colors: theme === 'dark' ? '#ffffff' : '#333333'
-        }
+          colors: theme === 'dark' ? '#9ca3af' : '#4b5563',
+          fontSize: '10px'
+        },
+        formatter: (value: number, opts?: any) => value.toFixed(0)
+      },
+      axisBorder: {
+        show: false
+      },
+      crosshairs: {
+        show: false
       }
     },
     tooltip: {
@@ -101,10 +182,33 @@ export default function AdminDashboard() {
       }
     },
     legend: {
+      show: true,
+      position: 'top',
+      horizontalAlign: 'right',
+      floating: true,
       labels: {
-        colors: theme === 'dark' ? '#ffffff' : '#333333'
+        colors: theme === 'dark' ? '#e5e7eb' : '#1f2937',
+        useSeriesColors: false
+      },
+      markers: {
+        width: 12,
+        height: 12,
+        radius: 12
+      } as ApexOptions['legend']
+    },
+    responsive: [
+      {
+        breakpoint: 480,
+        options: {
+          chart: {
+            height: 200
+          },
+          legend: {
+            position: 'bottom'
+          }
+        }
       }
-    }
+    ]
   })
 
   useEffect(() => {
@@ -213,8 +317,9 @@ export default function AdminDashboard() {
         ))}
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 overflow-hidden">
         <motion.div
+          className='overflow-hidden'
           initial={{ opacity: 0, x: -50 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ 
@@ -222,7 +327,7 @@ export default function AdminDashboard() {
             stiffness: 100 
           }}
         >
-          <Card className="h-full dark:bg-gray-800/70 bg-white/70 backdrop-blur-md">
+          <Card className="h-full overflow-hidden dark:bg-gray-800/70 bg-white/70 backdrop-blur-md">
             <CardHeader className="text-md sm:text-lg font-semibold text-gray-700 dark:text-white">Активность пользователей</CardHeader>
             <CardBody>
               {dashboardData ? (
@@ -242,6 +347,7 @@ export default function AdminDashboard() {
         </motion.div>
 
         <motion.div
+          className='overflow-hidden'
           initial={{ opacity: 0, x: 50 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ 
@@ -249,7 +355,7 @@ export default function AdminDashboard() {
             stiffness: 100 
           }}
         >
-          <Card className="h-full dark:bg-gray-800/70 bg-white/70 backdrop-blur-md">
+          <Card className="h-full overflow-hidden dark:bg-gray-800/70 bg-white/70 backdrop-blur-md">
             <CardHeader className="text-md sm:text-lg font-semibold text-gray-700 dark:text-white">Нагрузка системы</CardHeader>
             <CardBody>
               {dashboardData ? (
