@@ -152,24 +152,24 @@ export default function Home() {
           initial="hidden"
           animate="visible"
           variants={heroVariants}
-          className="text-center"
+          className="text-center flex flex-col items-center justify-center min-h-[70vh] space-y-6"
         >
-          <h1 className="text-3xl md:text-4xl font-bold mb-4 text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-purple-600 animate-gradient-x">
+          <h1 className="text-4xl md:text-5xl font-bold mb-4 text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-purple-600 animate-gradient-x max-w-4xl leading-tight">
             Умная Система Тестирования Кураторов 🚀
           </h1>
           
-          <p className="text-base text-gray-600 max-w-2xl mx-auto mb-6">
+          <p className="text-lg text-gray-600 max-w-3xl mx-auto mb-8 leading-relaxed">
             Революционная платформа для создания, управления и анализа образовательных тестов. 
             Превратите оценивание знаний в увлекательный и эффективный процесс! 📊✨
           </p>
 
-          <div className="flex justify-center space-x-3 mb-8">
+          <div className="flex justify-center space-x-4 mb-10">
             <Link href="/login">
               <NextUIButton 
                 color="primary" 
-                size="md" 
-                className="px-4 py-2 text-sm font-semibold"
-                startContent={<Rocket className="mr-1 w-4 h-4" />}
+                size="lg" 
+                className="px-6 py-3 text-base font-semibold"
+                startContent={<Rocket className="mr-2 w-5 h-5" />}
               >
                 Начать Работу
               </NextUIButton>
@@ -177,9 +177,9 @@ export default function Home() {
             <NextUIButton 
               color="secondary" 
               variant="bordered" 
-              size="md" 
-              className="px-4 py-2 text-sm font-semibold"
-              startContent={<Zap className="mr-1 w-4 h-4" />}
+              size="lg" 
+              className="px-6 py-3 text-base font-semibold"
+              startContent={<Zap className="mr-2 w-5 h-5" />}
               onPress={handleOpenBottomSheet}
             >
               Узнать Больше
@@ -187,7 +187,7 @@ export default function Home() {
           </div>
 
           {/* Features Grid */}
-          <div className="grid md:grid-cols-3 gap-4 max-w-4xl mx-auto">
+          <div className="grid md:grid-cols-3 gap-6 max-w-5xl mx-auto w-full">
             {features.map((feature, index) => (
               <motion.div
                 key={index}
@@ -197,15 +197,15 @@ export default function Home() {
                   delay: index * 0.2,
                   duration: 0.5
                 }}
-                className="bg-white/70 backdrop-blur-lg p-4 rounded-xl shadow-md hover:shadow-lg transition-all"
+                className="bg-white/80 backdrop-blur-lg p-6 rounded-xl shadow-md hover:shadow-lg transition-all"
               >
-                <div className="mb-2 flex justify-center">
-                  {React.cloneElement(feature.icon, { className: "w-8 h-8 text-blue-500" })}
+                <div className="mb-4 flex justify-center">
+                  {React.cloneElement(feature.icon, { className: "w-12 h-12 text-blue-500" })}
                 </div>
-                <h3 className="text-lg font-semibold mb-2 text-gray-800">
+                <h3 className="text-xl font-semibold mb-3 text-gray-800 text-center">
                   {feature.title}
                 </h3>
-                <p className="text-sm text-gray-600">
+                <p className="text-sm text-gray-600 text-center">
                   {feature.description}
                 </p>
               </motion.div>

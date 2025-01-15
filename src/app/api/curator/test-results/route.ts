@@ -120,8 +120,7 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url)
     const groupId = searchParams.get('groupId')
     const studentId = searchParams.get('studentId')
-
-    console.log('Fetching test results with params:', { groupId, studentId })
+    const testId = searchParams.get('testId')
 
     // Find students in the group first
     const studentsInGroup = groupId 
@@ -131,16 +130,13 @@ export async function GET(req: NextRequest) {
         }) 
       : []
 
-    console.log('Students in group:', studentsInGroup)
-
     const studentIds = studentsInGroup.map(student => student.id)
 
     const whereCondition: Prisma.TestResultWhereInput = {
       ...(studentId && { studentId }),
-      ...(groupId && { studentId: { in: studentIds } })
+      ...(groupId && { studentId: { in: studentIds } }),
+      ...(testId && { testId })
     }
-
-    console.log('Where condition:', whereCondition)
 
     const testResults = await prisma.testResult.findMany({
       where: whereCondition,
@@ -165,8 +161,6 @@ export async function GET(req: NextRequest) {
         completedAt: 'desc'
       }
     })
-
-    console.log('Found test results:', testResults.length)
 
     // Calculate max score for tests with 0 max score
     const updatedTestResults = await Promise.all(testResults.map(async (result) => {
@@ -208,7 +202,31 @@ export async function GET(req: NextRequest) {
       return result
     }))
 
-    return NextResponse.json(updatedTestResults)
+    // Fetch student categories for determining student levels
+    const studentCategories = await prisma.studentCategory.findMany({
+      orderBy: { minScore: 'asc' }
+    })
+
+    // Assign categories to test results
+    const categorizedResults = updatedTestResults.map(result => {
+      // Find the appropriate category based on total score
+      const category = studentCategories.find(
+        cat => result.totalScore >= cat.minScore && result.totalScore <= cat.maxScore
+      )
+
+      return {
+        ...result,
+        category: category ? {
+          id: category.id,
+          name: category.name,
+          description: category.description,
+          minScore: category.minScore,
+          maxScore: category.maxScore
+        } : null
+      }
+    })
+
+    return NextResponse.json(categorizedResults)
   } catch (error) {
     console.error('Fetching test results error:', error)
     return NextResponse.json({ 

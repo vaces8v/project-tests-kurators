@@ -2,20 +2,12 @@
 
 import React, { useState, useEffect } from 'react'
 import { 
-  Table, 
-  TableHeader, 
-  TableColumn, 
-  TableBody, 
-  TableRow, 
-  TableCell,
   Button,
-  Chip,
   Tooltip,
   Card,
   CardHeader,
   CardBody,
   Divider,
-  Link,
   Spinner,
   Modal,
   ModalContent,
@@ -188,7 +180,7 @@ export default function CuratorTests() {
                   <Button 
                     variant="light" 
                     color={test.status === 'COMPLETED' ? 'success' : 'warning'}
-                    onClick={() => openStatusChangeModal(test)}
+                    onPress={() => openStatusChangeModal(test)}
                     className="flex items-center gap-2"
                   >
                     {test.status === 'COMPLETED' ? <CheckCircle2 size={16} /> : <XCircle size={16} />}
@@ -200,17 +192,6 @@ export default function CuratorTests() {
                 <Divider />
                 <CardBody className="flex flex-row justify-between items-center">
                   <div className="flex items-center gap-3">
-                    <Tooltip content="Результаты">
-                      <Button 
-                        isIconOnly 
-                        variant="light" 
-                        color="success"
-                        isDisabled={test.status !== 'COMPLETED'}
-                        className="text-gray-600 hover:text-blue-600"
-                      >
-                        <FileText size={16} />
-                      </Button>
-                    </Tooltip>
                     <Tooltip content="Скопировать ссылку на тест">
                       <Button 
                         variant="light" 

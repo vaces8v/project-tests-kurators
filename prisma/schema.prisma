@@ -73,22 +73,6 @@ model Student {
   testResults  TestResult[]
 }
 
-model Test {
-  id          String   @id @default(cuid())
-  title       String
-  description String?
-  authorId    String
-  maxScore    Int      @default(0)
-  status      TestStatus  @default(DRAFT)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  author      User           @relation(fields: [authorId], references: [id])
-  questions   Question[]
-  testAssignments TestAssignment[]
-  testResults   TestResult[]
-}
-
 model Question {
   id            String   @id @default(cuid())
   test          Test     @relation(fields: [testId], references: [id])
@@ -151,4 +135,32 @@ model TestLink {
   createdAt DateTime @default(now())
   expiresAt DateTime
   user      User     @relation(fields: [createdBy], references: [id])
+}
+
+model StudentCategory {
+  id           String   @id @default(cuid())
+  name         String
+  minScore     Float
+  maxScore     Float
+  description  String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  tests        Test[]   @relation("CategoryTests")
+}
+
+model Test {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  authorId    String
+  maxScore    Int      @default(0)
+  status      TestStatus  @default(DRAFT)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  author      User           @relation(fields: [authorId], references: [id])
+  questions   Question[]
+  testAssignments TestAssignment[]
+  testResults   TestResult[]
+  categories   StudentCategory[] @relation("CategoryTests")
 }

@@ -34,6 +34,13 @@ interface TestResult {
   }
   totalScore: number
   completedAt: string
+  category?: {
+    id: string
+    name: string
+    description?: string
+    minScore: number
+    maxScore: number
+  } | null
   responses: {
     id: string
     question: {
@@ -46,7 +53,9 @@ interface TestResult {
 
 export default function TestResultsPage() {
   const [groups, setGroups] = useState<{id: string, name: string, code: string}[]>([])
+  const [tests, setTests] = useState<{id: string, title: string}[]>([])
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null)
+  const [selectedTest, setSelectedTest] = useState<string | null>(null)
   const [testResults, setTestResults] = useState<TestResult[]>([])
   const [resultToReset, setResultToReset] = useState<{id: string, studentName: string} | null>(null)
 
@@ -69,18 +78,43 @@ export default function TestResultsPage() {
     fetchGroups()
   }, [])
 
-  // Fetch test results for selected group
+  // Fetch tests
+  useEffect(() => {
+    async function fetchTests() {
+      try {
+        const res = await fetch('/api/curator/tests')
+        const data = await res.json()
+        setTests(data)
+      } catch (error) {
+        toast.error('Не удалось загрузить список тестов')
+      }
+    }
+    fetchTests()
+  }, [])
+
+  // Fetch test results for selected group and test
   useEffect(() => {
     if (!selectedGroup) return
 
     async function fetchTestResults() {
       try {
-        console.log('Fetching test results for group:', selectedGroup)
-        const res = await fetch(`/api/curator/test-results?groupId=${selectedGroup}`)
+        // Construct query parameters
+        const params = new URLSearchParams()
+        params.append('groupId', selectedGroup ?? '')
+        if (selectedTest) {
+          params.append('testId', selectedTest)
+        }
+
+        console.log('Fetching test results with params:', {
+          groupId: selectedGroup,
+          testId: selectedTest,
+          fullUrl: `/api/curator/test-results?${params.toString()}`
+        })
+
+        const res = await fetch(`/api/curator/test-results?${params.toString()}`)
         
         // Log raw response
         const responseText = await res.text()
-        console.log('Raw response:', responseText)
 
         // Try parsing the response
         let data;
@@ -111,7 +145,7 @@ export default function TestResultsPage() {
       }
     }
     fetchTestResults()
-  }, [selectedGroup])
+  }, [selectedGroup, selectedTest])
 
   // Reset test result
   const handleResetResult = async () => {
@@ -272,31 +306,57 @@ export default function TestResultsPage() {
         </CardHeader>
         <CardBody>
           {/* Group Selection */}
-          <div className="mb-4">
-            <label className="block mb-2">Выберите Группу</label>
-            <Select 
-              value={selectedGroup || undefined} 
-              selectedKeys={selectedGroup ? [selectedGroup] : []}
-              onSelectionChange={(keys) => {
-                const selectedKey = Array.from(keys)[0] as string
-                setSelectedGroup(selectedKey)
-              }}
-              label="Выберите Группу"
-              variant="bordered"
-            >
-              {groups.map(group => (
-                <SelectItem 
-                  key={group.id} 
-                  value={group.id}
-                  textValue={`${group.name} (${group.code})`}
-                >
-                  <div className="flex justify-between">
-                    <span>{group.name}</span>
-                    <span className="text-default-500 text-small">{group.code}</span>
-                  </div>
-                </SelectItem>
-              ))}
-            </Select>
+          <div className="mb-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block mb-2">Выберите Группу</label>
+              <Select 
+                value={selectedGroup || undefined} 
+                selectedKeys={selectedGroup ? [selectedGroup] : []}
+                onSelectionChange={(keys) => {
+                  const selectedKey = Array.from(keys)[0] as string
+                  setSelectedGroup(selectedKey)
+                }}
+                label="Выберите Группу"
+                variant="bordered"
+              >
+                {groups.map(group => (
+                  <SelectItem 
+                    key={group.id} 
+                    value={group.id}
+                    textValue={`${group.name} (${group.code})`}
+                  >
+                    <div className="flex justify-between">
+                      <span>{group.name}</span>
+                      <span className="text-default-500 text-small">{group.code}</span>
+                    </div>
+                  </SelectItem>
+                ))}
+              </Select>
+            </div>
+            <div>
+              <label className="block mb-2">Выберите Тест</label>
+              <Select 
+                value={selectedTest || undefined} 
+                selectedKeys={selectedTest ? [selectedTest] : []}
+                onSelectionChange={(keys) => {
+                  const selectedKey = Array.from(keys)[0] as string | null
+                  setSelectedTest(selectedKey)
+                }}
+                label="Выберите Тест (необязательно)"
+                variant="bordered"
+                isRequired={false}
+              >
+                {tests.map(test => (
+                  <SelectItem 
+                    key={test.id} 
+                    value={test.id}
+                    textValue={test.title}
+                  >
+                    {test.title}
+                  </SelectItem>
+                ))}
+              </Select>
+            </div>
           </div>
 
           {/* Test Results Table */}
@@ -309,6 +369,7 @@ export default function TestResultsPage() {
                 <TableColumn key="student">Студент</TableColumn>
                 <TableColumn key="test">Тест</TableColumn>
                 <TableColumn key="score">Балл</TableColumn>
+                <TableColumn key="category">Категория</TableColumn>
                 <TableColumn key="completedAt">Дата Завершения</TableColumn>
                 <TableColumn key="actions">Действия</TableColumn>
               </TableHeader>
@@ -325,6 +386,20 @@ export default function TestResultsPage() {
                         {result.totalScore.toFixed(2)} 
                         {result.test.maxScore !== undefined && ` / ${result.test.maxScore}`}
                       </div>
+                    </TableCell>
+                    <TableCell>
+                      {result.category ? (
+                        <div className="flex flex-col">
+                          <span className="font-semibold">{result.category.name}</span>
+                          {result.category.description && (
+                            <span className="text-sm text-default-500">
+                              {result.category.description}
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-default-500">Не определена</span>
+                      )}
                     </TableCell>
                     <TableCell>
                       {new Date(result.completedAt).toLocaleString()}

@@ -22,9 +22,10 @@ import {
   SelectItem,
   useDisclosure,
   Chip,
-  Tooltip
+  Tooltip,
 } from "@nextui-org/react"
 import { toast } from 'sonner'
+import Skeleton from '@mui/material/Skeleton';
 import { hashPassword } from '@/lib/auth'
 
 interface User {
@@ -47,6 +48,7 @@ interface GroupData {
 export default function UserManagement() {
   const [users, setUsers] = useState<User[]>([])
   const [groups, setGroups] = useState<GroupData[]>([])
+  const [loading, setLoading] = useState(true);
 
   const [themeTransition, setThemeTransition] = useState(false)
   const { theme, setTheme } = useTheme()
@@ -414,6 +416,7 @@ export default function UserManagement() {
   }
 
   const fetchInitialData = async () => {
+    setLoading(true); // Set loading to true when fetching data
     try {
       // Fetch groups first
       const groupsResponse = await fetch('/api/admin/groups')
@@ -437,7 +440,6 @@ export default function UserManagement() {
       if (!usersResponse.ok) {
         throw new Error(usersData.error || 'Не удалось загрузить пользователей')
       }
-
       
       // Map groups to users
       const usersWithGroups = usersData.map((user: User) => {
@@ -451,7 +453,6 @@ export default function UserManagement() {
             code: group.code || group.name
           }))
         
-        
         return {
           ...user,
           groups: userGroups
@@ -464,6 +465,8 @@ export default function UserManagement() {
       toast.error('Не удалось загрузить данные', {
         description: error instanceof Error ? error.message : 'Проверьте подключение к серверу'
       })
+    } finally {
+      setLoading(false); // Set loading to false after fetching data
     }
   }
 
@@ -517,92 +520,96 @@ export default function UserManagement() {
             </Button>
           </div>
 
-          <Table 
-            aria-label="Список пользователей"
-            color="primary"
-            selectionMode="single"
-            className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-md w-full"
-            classNames={{
-              th: "bg-blue-50 dark:bg-gray-700 text-gray-800 dark:text-white text-xs sm:text-sm",
-              td: "text-gray-800 dark:text-white text-xs sm:text-sm"
-            }}
-          >
-            <TableHeader>
-              <TableColumn>ФИО</TableColumn>
-              <TableColumn>Логин</TableColumn>
-              <TableColumn>Роль</TableColumn>
-              <TableColumn>Группы</TableColumn>
-              <TableColumn>Действия</TableColumn>
-            </TableHeader>
-            <TableBody>
-              {users.map((user) => (
-                <TableRow key={user.id} className="hover:bg-blue-50/50 dark:hover:bg-gray-700/50">
-                  <TableCell>{user.name}</TableCell>
-                  <TableCell>{user.login}</TableCell>
-                  <TableCell>
-                    <Chip 
-                      color={user.role === 'CURATOR' ? 'secondary' : 'primary'}
-                      variant="flat"
-                      size="sm"
-                    >
-                      {user.role === 'CURATOR' ? 'Куратор' : 'Администратор'}
-                    </Chip>
-                  </TableCell>
-                  <TableCell>
-                    {user.groups && user.groups.length > 0 
-                      ? user.groups.map(group => {
-                          return `${group.code || group.name || 'Без кода'}`
-                        }).join(', ') 
-                      : 'Нет групп'}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      <Tooltip content="Сбросить пароль">
-                        <Button 
-                          isIconOnly 
-                          size="sm" 
-                          variant="light"
-                          color="warning"
-                          onPress={() => initiatePasswordReset(user)}
-                          className="text-gray-800 dark:text-white hover:text-yellow-600 dark:hover:text-yellow-400"
-                        >
-                          <RefreshCw size={16} />
-                        </Button>
-                      </Tooltip>
-                      {user.role === 'CURATOR' && (
-                        <>
+          {loading ? (
+            <Skeleton className="h-52 w-full" variant='rounded' width="100%" height="250px" />
+          ) : (
+            <Table 
+              aria-label="Список пользователей"
+              color="primary"
+              selectionMode="single"
+              className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-md w-full"
+              classNames={{
+                th: "bg-blue-50 dark:bg-gray-700 text-gray-800 dark:text-white text-xs sm:text-sm",
+                td: "text-gray-800 dark:text-white text-xs sm:text-sm"
+              }}
+            >
+              <TableHeader>
+                <TableColumn>ФИО</TableColumn>
+                <TableColumn>Логин</TableColumn>
+                <TableColumn>Роль</TableColumn>
+                <TableColumn>Группы</TableColumn>
+                <TableColumn>Действия</TableColumn>
+              </TableHeader>
+              <TableBody>
+                {users.map((user) => (
+                  <TableRow key={user.id} className="hover:bg-blue-50/50 dark:hover:bg-gray-700/50">
+                    <TableCell>{user.name}</TableCell>
+                    <TableCell>{user.login}</TableCell>
+                    <TableCell>
+                      <Chip 
+                        color={user.role === 'CURATOR' ? 'secondary' : 'primary'}
+                        variant="flat"
+                        size="sm"
+                      >
+                        {user.role === 'CURATOR' ? 'Куратор' : 'Администратор'}
+                      </Chip>
+                    </TableCell>
+                    <TableCell>
+                      {user.groups && user.groups.length > 0 
+                        ? user.groups.map(group => {
+                            return `${group.code || group.name || 'Без кода'}`
+                          }).join(', ') 
+                        : 'Нет групп'}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <Tooltip content="Сбросить пароль">
                           <Button 
                             isIconOnly 
                             size="sm" 
                             variant="light"
-                            onPress={() => handleEditUser(user)}
-                            className="text-gray-800 dark:text-white hover:text-blue-600 dark:hover:text-blue-400"
+                            color="warning"
+                            onPress={() => initiatePasswordReset(user)}
+                            className="text-gray-800 dark:text-white hover:text-yellow-600 dark:hover:text-yellow-400"
                           >
-                            <Edit size={16} />
+                            <RefreshCw size={16} />
                           </Button>
-                          <Button 
-                            isIconOnly 
-                            size="sm" 
-                            variant="light" 
-                            color="danger"
-                            onPress={() => confirmDeleteUser(user.id!)}
-                            className="text-gray-800 dark:text-white hover:text-red-600 dark:hover:text-red-400"
-                          >
-                            <Trash2 size={16} />
-                          </Button>
-                        </>
-                      )}
-                      {user.role === 'ADMIN' && (
-                        <Tooltip content="Администраторов нельзя редактировать или удалять">
-                          <div className="text-xs text-gray-400 dark:text-gray-600"></div>
                         </Tooltip>
-                      )}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+                        {user.role === 'CURATOR' && (
+                          <> 
+                            <Button 
+                              isIconOnly 
+                              size="sm" 
+                              variant="light"
+                              onPress={() => handleEditUser(user)}
+                              className="text-gray-800 dark:text-white hover:text-blue-600 dark:hover:text-blue-400"
+                            >
+                              <Edit size={16} />
+                            </Button>
+                            <Button 
+                              isIconOnly 
+                              size="sm" 
+                              variant="light" 
+                              color="danger"
+                              onPress={() => confirmDeleteUser(user.id!)}
+                              className="text-gray-800 dark:text-white hover:text-red-600 dark:hover:text-red-400"
+                            >
+                              <Trash2 size={16} />
+                            </Button>
+                          </>
+                        )}
+                        {user.role === 'ADMIN' && (
+                          <Tooltip content="Администраторов нельзя редактировать или удалять">
+                            <div className="text-xs text-gray-400 dark:text-gray-600"></div>
+                          </Tooltip>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
         </motion.div>
 
         <Modal 

@@ -31,6 +31,7 @@ interface Test {
   description?: string
   questions: Question[]
   assignedGroups?: string[]
+  categories?: StudentCategory[]
 }
 
 interface Question {
@@ -52,6 +53,14 @@ interface Group {
   code: string
 }
 
+interface StudentCategory {
+  id: string
+  name: string
+  minScore: number
+  maxScore: number
+  description?: string
+}
+
 interface Curator {
   id: string | null
   name: string
@@ -62,6 +71,7 @@ interface Curator {
 export default function TestsManagement() {
   const [tests, setTests] = useState<Test[]>([])
   const [groups, setGroups] = useState<Group[]>([])
+  const [categories, setCategories] = useState<StudentCategory[]>([])
   const [isEditing, setIsEditing] = useState(false)
   const [editingTestId, setEditingTestId] = useState<string | null>(null)
   const [newTest, setNewTest] = useState<{
@@ -69,11 +79,13 @@ export default function TestsManagement() {
     description: string
     questions: Question[]
     assignedGroups: string[]
+    categories: StudentCategory[]
   }>({
     title: '',
     description: '',
     questions: [],
-    assignedGroups: []
+    assignedGroups: [],
+    categories: []
   })
 
   const { 
@@ -93,7 +105,8 @@ export default function TestsManagement() {
       title: '',
       description: '',
       questions: [],
-      assignedGroups: []
+      assignedGroups: [],
+      categories: []
     })
     onCreateTestModalOpen()
   }
@@ -137,7 +150,7 @@ export default function TestsManagement() {
     // Fetch tests
     const fetchTests = async () => {
       try {
-        const response = await fetch('/api/tests')
+        const response = await fetch('/api/admin/tests')
         const data = await response.json()
         setTests(data)
       } catch (error) {
@@ -160,8 +173,25 @@ export default function TestsManagement() {
       }
     }
 
+    // Fetch categories
+    const fetchCategories = async () => {
+      try {
+        const response = await fetch('/api/admin/student-categories')
+        if (!response.ok) {
+          throw new Error('Failed to fetch categories')
+        }
+        const data = await response.json()
+        setCategories(data)
+      } catch (error) {
+        toast.error('Не удалось загрузить категории', {
+          description: error instanceof Error ? error.message : String(error)
+        })
+      }
+    }
+
     fetchTests()
     fetchGroups()
+    fetchCategories()
   }, [])
 
   const addQuestion = () => {
@@ -239,7 +269,8 @@ export default function TestsManagement() {
         title: newTest.title,
         description: newTest.description || '',
         questions: validatedQuestions,
-        assignedGroups: newTest.assignedGroups || []
+        assignedGroups: newTest.assignedGroups || [],
+        categories: newTest.categories || []
       }
 
       const response = await fetch('/api/tests', {
@@ -255,8 +286,8 @@ export default function TestsManagement() {
         const errorText = await response.text()
         console.error('Server error response:', errorText)
         
-        toast.error('Test Creation Failed', {
-          description: `Server responded with status ${response.status}: ${errorText}`,
+        toast.error('Ошибка создания теста', {
+          description: `Сервер ответил с статусом ${response.status}: ${errorText}`,
           duration: 5000
         })
         return
@@ -271,12 +302,13 @@ export default function TestsManagement() {
           title: '',
           description: '',
           questions: [],
-          assignedGroups: []
+          assignedGroups: [],
+          categories: []
         })
         onCreateTestModalOpenChange()
-        toast.success('Test created successfully')
+        toast.success('Тест успешно создан!')
       } else {
-        toast.error('Test Creation Failed', {
+        toast.error('Ошибка создания теста', {
           description: 'Received empty response from server',
           duration: 5000
         })
@@ -284,7 +316,7 @@ export default function TestsManagement() {
     } catch (error) {
       console.error('Unexpected error during test creation:', error)
       
-      toast.error('Test Creation Failed', {
+      toast.error('Ошибка создания теста', {
         description: error instanceof Error ? error.message : String(error),
         duration: 5000
       })
@@ -300,12 +332,19 @@ export default function TestsManagement() {
       }
       const fullTest = await response.json()
       
+      // Transform the questions to ensure options are properly handled
+      const questions = fullTest.questions.map((q: Question) => ({
+        ...q,
+        options: q.type === 'TEXT' ? [] : (q.options || [])
+      }))
+
       // Reset the form and set editing mode
       setNewTest({
         title: fullTest.title,
         description: fullTest.description || '',
-        questions: fullTest.questions || [],
-        assignedGroups: fullTest.assignedGroups || [] // Explicitly set assignedGroups from the fetched test
+        questions: questions,
+        assignedGroups: fullTest.assignedGroups || [],
+        categories: fullTest.categories || []
       })
       setIsEditing(true)
       setEditingTestId(test.id)
@@ -319,36 +358,36 @@ export default function TestsManagement() {
 
   const handleUpdateTest = async (updatedTest: Test) => {
     try {
-      // Ensure we have a valid test ID
       if (!updatedTest.id) {
         toast.error('Не указан идентификатор теста')
         return null
       }
-
-      // Validate questions
+  
+      // Validate and transform questions
       const validatedQuestions = (updatedTest.questions || []).map((q, index) => ({
-        ...(q.id ? { id: q.id } : {}),
+        ...(q.id ? { id: q.id } : {}), // Preserve existing question ID
         text: q.text,
         type: q.type,
-        order: index + 1,  // Add order based on array index
-        options: q.type !== 'TEXT' ? 
-          (q.options || []).filter(opt => opt.text.trim() !== '').map((opt, optIndex) => ({
-            // Preserve existing option ID if present
-            ...(opt.id ? { id: opt.id } : {}),
-            text: opt.text,
-            score: opt.score || 0,
-            order: optIndex + 1  // Add order for options
-          })) : 
-          []
+        order: index + 1,
+        options: q.type === 'TEXT' ? [] : // Ensure TEXT questions have no options
+          (q.options || [])
+            .filter(opt => opt.text.trim() !== '') // Remove empty options
+            .map((opt, optIndex) => ({
+              ...(opt.id ? { id: opt.id } : {}), // Preserve existing option ID
+              text: opt.text.trim(),
+              score: opt.score || 0,
+              order: optIndex + 1
+            }))
       }))
-
+  
       const payload = {
         title: updatedTest.title,
         description: updatedTest.description || '',
         questions: validatedQuestions,
-        assignedGroups: updatedTest.assignedGroups || []
+        assignedGroups: updatedTest.assignedGroups || [],
+        categories: updatedTest.categories || []
       }
-
+  
       const response = await fetch(`/api/tests/${updatedTest.id}`, {
         method: 'PUT',
         headers: {
@@ -356,32 +395,58 @@ export default function TestsManagement() {
         },
         body: JSON.stringify(payload)
       })
-
+  
       if (!response.ok) {
         const errorText = await response.text()
         console.error('Server error response:', errorText)
-        
         toast.error('Не удалось обновить тест', {
           description: `Ошибка сервера: ${errorText}`,
           duration: 5000
         })
         return null
       }
-
-      const updatedTestResponse = await response.json()
-
-      // Update the tests state
-      setTests(prev => prev.map(t => t.id === updatedTest.id ? updatedTestResponse : t))
-      
-      // Update the current test if we're editing it
-      if (editingTestId === updatedTest.id) {
-        setNewTest(updatedTestResponse)
+  
+      const responseData = await response.json()
+  
+      // Transform the response data to match our Test interface
+      const transformedTest: Test = {
+        id: responseData.id,
+        title: responseData.title,
+        description: responseData.description,
+        questions: responseData.questions.map((q: any) => ({
+          id: q.id,
+          text: q.text,
+          type: q.type,
+          options: q.type === 'TEXT' ? [] : 
+            (q.options || []).map((opt: any) => ({
+              id: opt.id,
+              text: opt.text,
+              score: opt.score || 0
+            }))
+        })),
+        assignedGroups: responseData.testAssignments?.map((ta: any) => ta.group.code) || [],
+        categories: responseData.categories || []
       }
-
-      return updatedTestResponse
+  
+      // Update both the tests list and current editing form
+      setTests(prev => prev.map(t => t.id === updatedTest.id ? transformedTest : t))
+      
+      if (editingTestId === updatedTest.id) {
+        setNewTest({
+          title: transformedTest.title,
+          description: transformedTest.description || '',
+          questions: transformedTest.questions,
+          assignedGroups: transformedTest.assignedGroups || [],
+          categories: transformedTest.categories || []
+        })
+      }
+  
+      return transformedTest
     } catch (error) {
       console.error('Unexpected error during test update:', error)
-      toast.error('Не удалось обновить тест')
+      toast.error('Не удалось обновить тест', {
+        description: error instanceof Error ? error.message : String(error)
+      })
       return null
     }
   }
@@ -443,18 +508,13 @@ export default function TestsManagement() {
         }
       });
 
-      // Debug log
-      console.log('Validated questions:', JSON.stringify(validatedQuestions, null, 2))
-
       const payload = {
         title: newTest.title,
         description: newTest.description || '',
         questions: validatedQuestions,
-        assignedGroups: newTest.assignedGroups || []
+        assignedGroups: newTest.assignedGroups || [],
+        categories: newTest.categories.map(cat => ({ id: cat.id })) // Transform categories to just include IDs
       }
-
-      // Debug log
-      console.log('Update payload:', JSON.stringify(payload, null, 2))
 
       const response = await fetch(`/api/tests/${editingTestId}`, {
         method: 'PUT',
@@ -464,12 +524,10 @@ export default function TestsManagement() {
         body: JSON.stringify(payload)
       })
 
-      // More comprehensive error handling
       if (!response.ok) {
         const errorText = await response.text()
-        console.error('Server error response:', errorText)
         
-        toast.error('Test Update Failed', {
+        toast.error('Ошибка обновления теста', {
           description: `Server responded with status ${response.status}: ${errorText}`,
           duration: 5000
         })
@@ -481,11 +539,11 @@ export default function TestsManagement() {
       setTests(prev => prev.map(t => t.id === editingTestId ? updatedTest : t))
       resetForm()
       onTestModalOpenChange()
-      toast.success('Test updated successfully')
+      toast.success('Тест успешно обновлён!')
     } catch (error) {
       console.error('Unexpected error during test update:', error)
       
-      toast.error('Test Update Failed', {
+      toast.error('Ошибка обновления теста', {
         description: error instanceof Error ? error.message : String(error),
         duration: 5000
       })
@@ -527,7 +585,8 @@ export default function TestsManagement() {
       title: '',
       description: '',
       questions: [],
-      assignedGroups: []
+      assignedGroups: [],
+      categories: []
     })
     setIsEditing(false)
     setEditingTestId(null)
@@ -535,9 +594,17 @@ export default function TestsManagement() {
 
   const startEditingQuestion = (question: Question) => {
     console.log('Editing question:', question)
-    setCurrentQuestion({ ...question }) 
-    setEditingQuestion({ ...question })
-    onQuestionModalOpen() 
+    const questionWithOptions = {
+      ...question,
+      options: question.type === 'TEXT' ? [] : 
+        (question.options || []).map(opt => ({
+          ...opt,
+          score: opt.score || 0
+        }))
+    }
+    setCurrentQuestion({ ...questionWithOptions })
+    setEditingQuestion({ ...questionWithOptions })
+    onQuestionModalOpen()
   }
 
   const updateEditingQuestion = (updates: Partial<Question>) => {
@@ -556,31 +623,24 @@ export default function TestsManagement() {
         return
       }
 
-      // Validate options if not a TEXT type question
-      if (editingQuestion.type !== 'TEXT') {
-        const validOptions = editingQuestion.options.filter(opt => opt.text.trim() !== '')
-        
-        if (validOptions.length === 0) {
-          toast.error('At least one option is required for non-TEXT questions')
-          return
-        }
-
-        editingQuestion.options = validOptions
-      } else {
-        // For TEXT type, ensure options are cleared
-        editingQuestion.options = []
+      // For TEXT type questions, ensure options is an empty array
+      const updatedQuestion = {
+        ...editingQuestion,
+        options: editingQuestion.type === 'TEXT' ? [] : (editingQuestion.options || [])
       }
 
       // Find the test that contains this question
       let currentTest = tests.find(test => 
-        Array.isArray(test.questions) && 
         test.questions.some(q => q.id === editingQuestion.id)
       )
 
       if (!currentTest) {
-        // If not found in tests, try to find in newTest
-        if (newTest.questions.some(q => q.id === editingQuestion.id)) {
-          currentTest = { ...newTest, id: editingTestId }
+        if (editingTestId) {
+          currentTest = {
+            ...newTest,
+            id: editingTestId,
+            questions: newTest.questions || []
+          }
         } else {
           toast.error('Не удалось найти тест для этого вопроса')
           return
@@ -588,12 +648,8 @@ export default function TestsManagement() {
       }
 
       // Create a copy of the current test with updated question
-      const updatedQuestions = (currentTest.questions || []).map(q => 
-        q.id === editingQuestion.id ? { 
-          ...editingQuestion,
-          // Ensure options are cleared for TEXT type
-          options: editingQuestion.type === 'TEXT' ? [] : editingQuestion.options 
-        } : q
+      const updatedQuestions = currentTest.questions.map(q => 
+        q.id === editingQuestion.id ? updatedQuestion : q
       )
 
       // Create a new test object with updated questions
@@ -602,18 +658,19 @@ export default function TestsManagement() {
         questions: updatedQuestions
       }
 
-      // Update the test on the backend
+      // Update the test
       const result = await handleUpdateTest(updatedTest)
 
       if (result) {
-        // Reset editing state
         setEditingQuestion(null)
-        onQuestionModalOpenChange() // Close the modal
+        onQuestionModalOpenChange()
         toast.success('Вопрос успешно обновлен')
       }
     } catch (error) {
       console.error('Error updating question:', error)
-      toast.error('Не удалось обновить вопрос')
+      toast.error('Не удалось обновить вопрос', {
+        description: error instanceof Error ? error.message : String(error)
+      })
     }
   }
 
@@ -668,13 +725,17 @@ export default function TestsManagement() {
                   orientation="horizontal"
                   value={editingQuestion ? editingQuestion.type : currentQuestion.type}
                   onValueChange={(value) => {
+                    const questionType = value as 'SINGLE_CHOICE' | 'MULTIPLE_CHOICE' | 'TEXT'
                     if (editingQuestion) {
-                      updateEditingQuestion({ type: value as 'SINGLE_CHOICE' | 'MULTIPLE_CHOICE' | 'TEXT' })
+                      updateEditingQuestion({ 
+                        type: questionType,
+                        options: questionType === 'TEXT' ? [] : (editingQuestion.options || [{ text: '', score: 0 }])
+                      })
                     } else {
                       setCurrentQuestion(prev => ({
                         ...prev, 
-                        type: value as 'SINGLE_CHOICE' | 'MULTIPLE_CHOICE' | 'TEXT',
-                        options: value === 'TEXT' ? [] : prev.options
+                        type: questionType,
+                        options: questionType === 'TEXT' ? [] : [{ text: '', score: 0 }]
                       }))
                     }
                   }}
@@ -685,7 +746,8 @@ export default function TestsManagement() {
                 </RadioGroup>
               </div>
 
-              {(editingQuestion && editingQuestion.type === 'SINGLE_CHOICE' || editingQuestion && editingQuestion.type === 'MULTIPLE_CHOICE' || !editingQuestion && currentQuestion.type === 'SINGLE_CHOICE' || !editingQuestion && currentQuestion.type === 'MULTIPLE_CHOICE') && (
+              {((editingQuestion && (editingQuestion.type === 'SINGLE_CHOICE' || editingQuestion.type === 'MULTIPLE_CHOICE')) || 
+                (!editingQuestion && (currentQuestion.type === 'SINGLE_CHOICE' || currentQuestion.type === 'MULTIPLE_CHOICE'))) && (
                 <div className="space-y-2">
                   <div className="flex justify-between items-center">
                     <h3 className="text-md font-semibold">Варианты ответов</h3>
@@ -695,7 +757,10 @@ export default function TestsManagement() {
                       variant="light"
                       onPress={() => {
                         if (editingQuestion) {
-                          updateEditingQuestion({ options: [...editingQuestion.options, { text: '', score: 0 }] })
+                          const currentOptions = editingQuestion.options || []
+                          updateEditingQuestion({ 
+                            options: [...currentOptions, { text: '', score: 0 }] 
+                          })
                         } else {
                           addQuestionOption()
                         }
@@ -706,7 +771,7 @@ export default function TestsManagement() {
                     </Button>
                   </div>
                   
-                  {(editingQuestion ? editingQuestion.options : currentQuestion.options).map((option, index) => (
+                  {((editingQuestion ? editingQuestion.options : currentQuestion.options) || []).map((option, index) => (
                     <div key={index} className="flex items-center space-x-2">
                       <Input
                         label={`Вариант ${index + 1}`}
@@ -715,7 +780,7 @@ export default function TestsManagement() {
                         value={option.text}
                         onChange={(e) => {
                           if (editingQuestion) {
-                            const newOptions = [...editingQuestion.options]
+                            const newOptions = [...(editingQuestion.options || [])]
                             newOptions[index] = { ...newOptions[index], text: e.target.value }
                             updateEditingQuestion({ options: newOptions })
                           } else {
@@ -734,7 +799,7 @@ export default function TestsManagement() {
                         value={option.score.toString()}
                         onChange={(e) => {
                           if (editingQuestion) {
-                            const newOptions = [...editingQuestion.options]
+                            const newOptions = [...(editingQuestion.options || [])]
                             newOptions[index] = { 
                               ...newOptions[index], 
                               score: parseFloat(e.target.value) || 0 
@@ -758,7 +823,7 @@ export default function TestsManagement() {
                         color="danger"
                         onPress={() => {
                           if (editingQuestion) {
-                            const newOptions = editingQuestion.options.filter((_, i) => i !== index)
+                            const newOptions = (editingQuestion.options || []).filter((_, i) => i !== index)
                             updateEditingQuestion({ options: newOptions })
                           } else {
                             const newOptions = currentQuestion.options.filter((_, i) => i !== index)
@@ -830,12 +895,14 @@ export default function TestsManagement() {
             <TableColumn className="text-gray-800 dark:text-white hidden sm:table-cell">Описание</TableColumn>
             <TableColumn className="text-gray-800 dark:text-white hidden sm:table-cell">Кол-во вопросов</TableColumn>
             <TableColumn className="text-gray-800 dark:text-white hidden sm:table-cell">Группы</TableColumn>
+            <TableColumn className="text-gray-800 dark:text-white hidden sm:table-cell">Категории</TableColumn>
             <TableColumn className="text-gray-800 dark:text-white">Действия</TableColumn>
           </TableHeader>
           <TableBody>
             {tests.length === 0 ? (
               <TableRow>
                 <TableCell>-</TableCell>
+                <TableCell className="hidden sm:table-cell">-</TableCell>
                 <TableCell className="hidden sm:table-cell">-</TableCell>
                 <TableCell className="hidden sm:table-cell">-</TableCell>
                 <TableCell className="hidden sm:table-cell">-</TableCell>
@@ -853,6 +920,9 @@ export default function TestsManagement() {
                   <TableCell className="hidden sm:table-cell">{test.questions.length}</TableCell>
                   <TableCell className="hidden sm:table-cell">
                     {Array.isArray(test.assignedGroups) ? test.assignedGroups.join(', ') : '-'}
+                  </TableCell>
+                  <TableCell className="hidden sm:table-cell">
+                    {test.categories?.map(cat => cat.name).join(', ') || '-'}
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2">
@@ -928,28 +998,20 @@ export default function TestsManagement() {
                   selectionMode="multiple"
                   variant="bordered"
                   size="sm"
-                  selectedKeys={new Set(
-                    newTest.assignedGroups.map(groupCode => 
-                      groups.find(group => group.code === groupCode)?.id || groupCode
-                    )
-                  )}
+                  selectedKeys={new Set(newTest.assignedGroups || [])}
                   onSelectionChange={(keys) => {
-                    const selectedGroupCodes = keys === 'all' 
-                      ? groups.map(group => group.code) 
-                      : Array.from(keys)
-                          .map(key => {
-                            // Try to find by ID first, then fallback to the key itself
-                            const group = groups.find(group => group.id === key)
-                            return group?.code || (typeof key === 'string' ? key : '')
-                          })
-                          .filter(code => code !== '')
+                    let selectedGroupCodes: string[] = [];
                     
-                    console.log('Selected Group Codes:', selectedGroupCodes)
+                    if (keys === 'all') {
+                      selectedGroupCodes = groups.map(group => group.code);
+                    } else if (keys instanceof Set) {
+                      selectedGroupCodes = Array.from(keys) as string[];
+                    }
                     
                     setNewTest(prev => ({
                       ...prev, 
                       assignedGroups: selectedGroupCodes
-                    }))
+                    }));
                   }}
                   className="text-gray-800 dark:text-white"
                   classNames={{
@@ -959,11 +1021,48 @@ export default function TestsManagement() {
                 >
                   {groups.map((group) => (
                     <SelectItem 
-                      key={group.id} 
-                      value={group.id}
+                      key={group.code}
+                      value={group.code}
                       className="text-gray-800 dark:text-white text-xs sm:text-sm"
                     >
-                       {`${group.name} - ${group.code}`}
+                      {`${group.name} - ${group.code}`}
+                    </SelectItem>
+                  ))}
+                </Select>
+
+                <Select
+                  label="Категории"
+                  selectionMode="multiple"
+                  variant="bordered"
+                  size="sm"
+                  selectedKeys={new Set(
+                    newTest.categories.map(category => category.id)
+                  )}
+                  onSelectionChange={(keys) => {
+                    const selectedCategoryIds = keys === 'all' 
+                      ? categories.map(category => category.id) 
+                      : Array.from(keys)
+                    
+                    console.log('Selected Category IDs:', selectedCategoryIds)
+                    
+                    setNewTest(prev => ({
+                      ...prev, 
+                      categories: categories.filter(category => selectedCategoryIds.includes(category.id))
+                    }))
+                  }}
+                  className="text-gray-800 dark:text-white"
+                  classNames={{
+                    trigger: "text-gray-800 dark:text-white text-xs sm:text-sm",
+                    label: "text-gray-600 dark:text-gray-300 text-xs sm:text-sm"
+                  }}
+                >
+                  {categories.map((category) => (
+                    <SelectItem 
+                      key={category.id} 
+                      value={category.id}
+                      className="text-gray-800 dark:text-white text-xs sm:text-sm"
+                    >
+                      {category.name}
                     </SelectItem>
                   ))}
                 </Select>
@@ -1098,28 +1197,20 @@ export default function TestsManagement() {
                   selectionMode="multiple"
                   variant="bordered"
                   size="sm"
-                  selectedKeys={new Set(
-                    newTest.assignedGroups.map(groupCode => 
-                      groups.find(group => group.code === groupCode)?.id || groupCode
-                    )
-                  )}
+                  selectedKeys={new Set(newTest.assignedGroups || [])}
                   onSelectionChange={(keys) => {
-                    const selectedGroupCodes = keys === 'all' 
-                      ? groups.map(group => group.code) 
-                      : Array.from(keys)
-                          .map(key => {
-                            // Try to find by ID first, then fallback to the key itself
-                            const group = groups.find(group => group.id === key)
-                            return group?.code || (typeof key === 'string' ? key : '')
-                          })
-                          .filter(code => code !== '')
+                    let selectedGroupCodes: string[] = [];
                     
-                    console.log('Selected Group Codes:', selectedGroupCodes)
+                    if (keys === 'all') {
+                      selectedGroupCodes = groups.map(group => group.code);
+                    } else if (keys instanceof Set) {
+                      selectedGroupCodes = Array.from(keys) as string[];
+                    }
                     
                     setNewTest(prev => ({
                       ...prev, 
                       assignedGroups: selectedGroupCodes
-                    }))
+                    }));
                   }}
                   className="text-gray-800 dark:text-white"
                   classNames={{
@@ -1129,11 +1220,48 @@ export default function TestsManagement() {
                 >
                   {groups.map((group) => (
                     <SelectItem 
-                      key={group.id} 
-                      value={group.id}
+                      key={group.code}
+                      value={group.code}
                       className="text-gray-800 dark:text-white text-xs sm:text-sm"
                     >
                       {`${group.name} - ${group.code}`}
+                    </SelectItem>
+                  ))}
+                </Select>
+
+                <Select
+                  label="Категории"
+                  selectionMode="multiple"
+                  variant="bordered"
+                  size="sm"
+                  selectedKeys={new Set(
+                    newTest.categories.map(category => category.id)
+                  )}
+                  onSelectionChange={(keys) => {
+                    const selectedCategoryIds = keys === 'all' 
+                      ? categories.map(category => category.id) 
+                      : Array.from(keys)
+                    
+                    console.log('Selected Category IDs:', selectedCategoryIds)
+                    
+                    setNewTest(prev => ({
+                      ...prev, 
+                      categories: categories.filter(category => selectedCategoryIds.includes(category.id))
+                    }))
+                  }}
+                  className="text-gray-800 dark:text-white"
+                  classNames={{
+                    trigger: "text-gray-800 dark:text-white text-xs sm:text-sm",
+                    label: "text-gray-600 dark:text-gray-300 text-xs sm:text-sm"
+                  }}
+                >
+                  {categories.map((category) => (
+                    <SelectItem 
+                      key={category.id} 
+                      value={category.id}
+                      className="text-gray-800 dark:text-white text-xs sm:text-sm"
+                    >
+                      {category.name}
                     </SelectItem>
                   ))}
                 </Select>

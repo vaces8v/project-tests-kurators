@@ -72,6 +72,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       href: '/a/group', 
       icon: <BookOpen />, 
       label: 'Группы' 
+    },
+    { 
+      href: '/a/student-categories', 
+      icon: <List />, 
+      label: 'Категории' 
     }
   ]
 

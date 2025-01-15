@@ -94,10 +94,11 @@ export default function AdminDashboard() {
     tooltip: {
       theme: theme === 'dark' ? 'dark' : 'light',
       style: {
+        //@ts-ignore
         backgroundColor: theme === 'dark' ? '#1f2937' : '#ffffff',
         color: theme === 'dark' ? '#ffffff' : '#333333',
         fontSize: '12px'
-      } as const
+      }
     },
     legend: {
       labels: {
