@@ -1,7 +1,7 @@
 'use client'
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { motion } from 'framer-motion'
-import { Plus, Trash2, Edit } from 'lucide-react'
+import { Plus, Trash2, Edit, Search } from 'lucide-react'
 import { 
   Table, 
   TableHeader, 
@@ -43,6 +43,11 @@ export default function StudentCategoriesManagement() {
   const [selectedTests, setSelectedTests] = useState<Set<string>>(new Set([]))
   const [isEditing, setIsEditing] = useState(false)
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null)
+  
+  // New state for filtering
+  const [testFilter, setTestFilter] = useState<string | null>(null)
+  const [categoryNameFilter, setCategoryNameFilter] = useState('')
+
   const [newCategory, setNewCategory] = useState<Omit<StudentCategory, 'id'>>({
     name: '',
     minScore: 0,
@@ -76,6 +81,7 @@ export default function StudentCategoriesManagement() {
         throw new Error('Failed to fetch categories')
       }
       const data = await response.json()
+      
       setCategories(data)
     } catch (error) {
       toast.error('Failed to fetch categories', {
@@ -91,6 +97,7 @@ export default function StudentCategoriesManagement() {
         throw new Error('Failed to fetch tests')
       }
       const data = await response.json()
+      
       setTests(data)
     } catch (error) {
       toast.error('Failed to fetch tests', {
@@ -115,15 +122,15 @@ export default function StudentCategoriesManagement() {
       })
 
       if (!response.ok) {
-        throw new Error('Failed to create category')
+        throw new Error('Ошибка создания категории!')
       }
 
       await fetchCategories() // Refresh the list to get updated data
       resetForm()
       onCategoryModalOpenChange()
-      toast.success('Category created successfully')
+      toast.success('Категория успешно создана!')
     } catch (error) {
-      toast.error('Failed to create category', {
+      toast.error('Ошибка создания категории!', {
         description: error instanceof Error ? error.message : String(error)
       })
     }
@@ -146,15 +153,15 @@ export default function StudentCategoriesManagement() {
       })
 
       if (!response.ok) {
-        throw new Error('Failed to update category')
+        throw new Error('Ошибка обновления категории!')
       }
 
       await fetchCategories() // Refresh the list to get updated data
       resetForm()
       onCategoryModalOpenChange()
-      toast.success('Category updated successfully')
+      toast.success('Успешное обновление категории!')
     } catch (error) {
-      toast.error('Failed to update category', {
+      toast.error('Ошибка обновления категории!', {
         description: error instanceof Error ? error.message : String(error)
       })
     }
@@ -169,15 +176,15 @@ export default function StudentCategoriesManagement() {
       })
 
       if (!response.ok) {
-        throw new Error('Failed to delete category')
+        throw new Error('Ошибка удаления категории!')
       }
 
       setCategories(prev => prev.filter(cat => cat.id !== categoryToDelete.id))
       setCategoryToDelete(null)
       onDeleteConfirmationOpenChange()
-      toast.success('Category deleted successfully')
+      toast.success('Категория успешно удалена!')
     } catch (error) {
-      toast.error('Failed to delete category', {
+      toast.error('Ошибка удаления категории!', {
         description: error instanceof Error ? error.message : String(error)
       })
     }
@@ -201,12 +208,23 @@ export default function StudentCategoriesManagement() {
         return false
       }
 
-      // Проверяем пересечение диапазонов
-      const overlapsMin = newCategory.minScore >= category.minScore && newCategory.minScore <= category.maxScore
-      const overlapsMax = newCategory.maxScore >= category.minScore && newCategory.maxScore <= category.maxScore
-      const encompasses = newCategory.minScore <= category.minScore && newCategory.maxScore >= category.maxScore
+      // Найдем общие тесты между новой категорией и существующей
+      const commonTests = category.tests?.filter(test => 
+        selectedTests.has(test.id)
+      ) || []
 
-      return overlapsMin || overlapsMax || encompasses
+      // Если есть общие тесты, проверяем пересечение баллов
+      if (commonTests.length > 0) {
+        // Проверяем пересечение диапазонов
+        const overlapsMin = newCategory.minScore >= category.minScore && newCategory.minScore <= category.maxScore
+        const overlapsMax = newCategory.maxScore >= category.minScore && newCategory.maxScore <= category.maxScore
+        const encompasses = newCategory.minScore <= category.minScore && newCategory.maxScore >= category.maxScore
+
+        return overlapsMin || overlapsMax || encompasses
+      }
+
+      // Если нет общих тестов, возвращаем false
+      return false
     })
 
     if (hasOverlap) {
@@ -287,6 +305,36 @@ export default function StudentCategoriesManagement() {
     }
   }
 
+  const filteredCategories = useMemo(() => {
+    console.log('Filtering categories:', {
+      totalCategories: categories.length,
+      testFilter,
+      categoryNameFilter
+    })
+
+    const filtered = categories.filter(category => {
+      // Check name filter first
+      const nameMatches = !categoryNameFilter || 
+        category.name.toLowerCase().includes(categoryNameFilter.toLowerCase())
+
+      // If test filter is set, check test matching
+      if (testFilter) {
+        const hasMatchingTest = category.tests?.some(test => test.id === testFilter)
+        return nameMatches && hasMatchingTest
+      }
+
+      // If no test filter, just return name matches
+      return nameMatches
+    })
+
+    console.log('Filtered categories:', {
+      filteredCount: filtered.length,
+      filteredNames: filtered.map(c => c.name)
+    })
+
+    return filtered
+  }, [categories, testFilter, categoryNameFilter])
+
   return (
     <motion.div 
       className="space-y-6 p-4 sm:p-6 bg-gradient-to-br from-blue-50 to-blue-100 dark:bg-gradient-to-br dark:from-gray-900 dark:to-gray-800 min-h-screen"
@@ -312,6 +360,56 @@ export default function StudentCategoriesManagement() {
         </Button>
       </div>
 
+      {/* Filtering Section */}
+      <div className="w-full max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 mb-4 flex flex-col sm:flex-row gap-4 items-center">
+        <Select
+          label="Фильтр по тесту"
+          variant="bordered"
+          size="sm"
+          placeholder="Выберите тест"
+          selectedKeys={testFilter ? new Set([testFilter]) : new Set()}
+          onSelectionChange={(keys) => {
+            // Convert keys to a string or null
+            const selectedKey = keys instanceof Set && keys.size > 0 
+              ? Array.from(keys)[0]?.toString() ?? null 
+              : null
+            
+            console.log('Test selection debug:', {
+              keys,
+              selectedKey
+            })
+
+            // Directly set the test filter
+            setTestFilter(selectedKey)
+          }}
+          className="w-full sm:w-1/2"
+        >
+          {tests.map((test) => (
+            <SelectItem 
+              key={test.id} 
+              value={test.id}
+            >
+              {test.title}
+            </SelectItem>
+          ))}
+        </Select>
+        
+        <Input
+          label="Поиск по названию категории"
+          variant="bordered"
+          size="sm"
+          value={categoryNameFilter}
+          onChange={(e) => setCategoryNameFilter(e.target.value)}
+          className="w-full sm:w-1/2"
+          startContent={
+            <Search size={16} className="text-gray-400" />
+          }
+          isClearable
+          onClear={() => setCategoryNameFilter('')}
+        />
+      </div>
+
+      {/* Filtered Categories Table */}
       <div className="w-full max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 overflow-x-auto">
         <Table 
           aria-label="Categories table"
@@ -330,7 +428,7 @@ export default function StudentCategoriesManagement() {
             <TableColumn className="text-gray-800 dark:text-white">Действия</TableColumn>
           </TableHeader>
           <TableBody>
-            {categories.length === 0 ? (
+            {filteredCategories.length === 0 ? (
               <TableRow>
                 <TableCell>-</TableCell>
                 <TableCell>-</TableCell>
@@ -342,7 +440,7 @@ export default function StudentCategoriesManagement() {
                 </TableCell>
               </TableRow>
             ) : (
-              categories.map((category) => (
+              filteredCategories.map((category) => (
                 <TableRow key={category.id} className="hover:bg-blue-50/50 dark:hover:bg-gray-700/50">
                   <TableCell>
                     <span className="font-semibold">{category.name}</span>
@@ -355,7 +453,13 @@ export default function StudentCategoriesManagement() {
                       ? (
                         <div className="flex flex-wrap gap-1">
                           {category.tests.map(test => (
-                            <span key={test.id} className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+                            <span 
+                              key={test.id} 
+                              onClick={() => setTestFilter(prevFilter => 
+                                prevFilter === test.id ? null : test.id
+                              )}
+                              className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 cursor-pointer hover:bg-blue-200 dark:hover:bg-blue-800 transition-colors"
+                            >
                               {test.title}
                             </span>
                           ))}
