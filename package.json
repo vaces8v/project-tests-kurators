@@ -8,7 +8,8 @@
     "build": "next build --no-lint",
     "start": "next start",
     "lint": "next lint",
-    "prisma:seed": "node --loader ts-node/esm prisma/seed.ts"
+    "prisma:seed": "node --loader ts-node/esm prisma/seed.ts",
+    "prisma:seed:learning-style": "node --loader ts-node/esm prisma/seed-learning-style.ts"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",

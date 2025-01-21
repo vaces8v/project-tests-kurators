@@ -10,30 +10,43 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const uniqueLink = searchParams.get('uniqueLink')
 
-  const session = await getServerSession(authOptions)
-  
-  // Ensure only students can access tests
-  if (!session || session.user.role !== 'STUDENT') {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
-  }
-
-  // If unique link is provided, fetch specific test details
+  // If unique link is provided, fetch specific test details without requiring auth
   if (uniqueLink) {
-    const testAssignment = await prisma.testAssignment.findUnique({
-      where: { uniqueLink },
+    const testLink = await prisma.testLink.findUnique({
+      where: { 
+        linkId: uniqueLink,
+        expiresAt: {
+          gt: new Date() // Check if link hasn't expired
+        }
+      },
       include: {
         test: {
-          select: {
-            id: true,
-            title: true,
-            description: true,
-            difficulty: true,
+          include: {
+            testAssignments: {
+              include: {
+                group: {
+                  include: {
+                    groupStudentModels: {
+                      select: {
+                        id: true,
+                        firstName: true,
+                        lastName: true,
+                        middleName: true
+                      }
+                    }
+                  }
+                }
+              }
+            },
             questions: {
               select: {
                 id: true,
                 text: true,
                 type: true,
                 options: true
+              },
+              orderBy: {
+                order: 'asc'
               }
             }
           }
@@ -41,11 +54,49 @@ export async function GET(request: Request) {
       }
     })
 
-    if (!testAssignment) {
-      return NextResponse.json({ error: 'Test not found' }, { status: 404 })
+    if (!testLink || !testLink.test) {
+      return NextResponse.json({ error: 'Invalid or expired test link' }, { status: 404 })
     }
 
-    return NextResponse.json(testAssignment)
+    // Собираем всех уникальных студентов из всех групп
+    const allStudents = await Promise.all(
+      testLink.test.testAssignments
+        .flatMap(assignment => assignment.group?.groupStudentModels || [])
+        .filter((student, index, self) => 
+          index === self.findIndex((s) => s.id === student.id)
+        )
+        .map(async (student) => {
+          // Check if the student has already completed this test
+          const testResult = await prisma.testResult.findFirst({
+            where: {
+              studentId: student.id,
+              testId: testLink.test.id
+            }
+          })
+          
+          // Return the student only if they haven't completed the test
+          return testResult ? null : student
+        })
+    )
+    // Remove null values (students who completed the test)
+    .then(students => students.filter(student => student !== null));
+
+    return NextResponse.json({
+      test: {
+        id: testLink.test.id,
+        title: testLink.test.title,
+        description: testLink.test.description,
+        questions: testLink.test.questions || []
+      },
+      students: allStudents
+    })
+  }
+
+  // For non-link access, require student authentication
+  const session = await getServerSession(authOptions)
+  
+  if (!session || session.user.role !== 'STUDENT') {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
   }
 
   // Otherwise, find groups the student belongs to and get available tests
@@ -69,7 +120,6 @@ export async function GET(request: Request) {
           id: true,
           title: true,
           description: true,
-          difficulty: true,
           questions: {
             select: {
               id: true,
@@ -86,13 +136,20 @@ export async function GET(request: Request) {
   return NextResponse.json(testAssignments)
 }
 
+// Define interface for student answer
+interface StudentAnswer {
+  questionId: string;
+  selectedOption: string;
+  score: number;
+}
+
 // Submit test results without authentication
 export async function POST(request: Request) {
   try {
     const { 
       testId, 
       groupId, 
-      studentName, 
+      studentId, 
       answers, 
       learningStyleQuiz 
     } = await request.json()
@@ -101,8 +158,7 @@ export async function POST(request: Request) {
     const testAssignment = await prisma.testAssignment.findFirst({
       where: { 
         testId, 
-        groupId,
-        uniqueLink: { not: undefined }
+        groupId
       }
     })
 
@@ -113,7 +169,13 @@ export async function POST(request: Request) {
     // Calculate total score
     const test = await prisma.test.findUnique({
       where: { id: testId },
-      include: { questions: true }
+      include: { 
+        questions: {
+          include: {
+            options: true
+          }
+        } 
+      }
     })
 
     if (!test) {
@@ -121,22 +183,27 @@ export async function POST(request: Request) {
     }
 
     let totalScore = 0
-    const maxScore = test.questions.reduce((sum, q) => sum + q.points, 0)
+    const maxScore = test.questions.reduce((sum, q) => {
+      // For each question, find the maximum possible score from its options
+      const questionMaxScore = Math.max(...q.options.map(opt => opt.score), 0)
+      return sum + questionMaxScore
+    }, 0)
 
     test.questions.forEach(question => {
-      const studentAnswer = answers[question.id]
+      const studentAnswer = answers.find((answer: StudentAnswer) => answer.questionId === question.id)
       
       // Score calculation logic
-      if (question.type === 'multiple-choice') {
-        if (studentAnswer === question.correctAnswer) {
-          totalScore += question.points
+      if (question.type === 'MULTIPLE_CHOICE') {
+        const correctOption = question.options.find(option => option.score > 0)
+        if (correctOption && studentAnswer.selectedOption === correctOption.text) {
+          totalScore += correctOption.score
         }
-      } else if (question.type === 'boolean') {
-        if (studentAnswer === question.correctAnswer) {
-          totalScore += question.points
+      } else if (question.type === 'SINGLE_CHOICE') {
+        const correctOption = question.options.find(option => option.score > 0)
+        if (correctOption && studentAnswer.selectedOption === correctOption.text) {
+          totalScore += correctOption.score
         }
       }
-      // For text questions, manual grading would be needed
     })
 
     // Determine learning style
@@ -146,13 +213,28 @@ export async function POST(request: Request) {
     const testResult = await prisma.testResult.create({
       data: {
         test: { connect: { id: testId } },
-        group: { connect: { id: groupId } },
-        studentName,
-        answers,
+        student: { connect: { id: studentId } },
         totalScore,
-        maxScore,
-        learningStyle: learningStyleResult.style,
-        learningStyleRecommendation: learningStyleResult.recommendation
+        responses: {
+          create: answers.map((answer: StudentAnswer) => ({
+            question: { connect: { id: answer.questionId } },
+            selectedOption: answer.selectedOption,
+            score: answer.score
+          }))
+        },
+        learningStyleResult: {
+          create: {
+            concreteExpScore: learningStyleResult.concreteExpScore,
+            reflectiveScore: learningStyleResult.reflectiveScore,
+            theoreticalScore: learningStyleResult.theoreticalScore,
+            activeExpScore: learningStyleResult.activeExpScore,
+            test: {
+              connect: {
+                id: testId
+              }
+            }
+          }
+        }
       }
     })
 
@@ -165,48 +247,52 @@ export async function POST(request: Request) {
 
 // Learning style determination function
 function determineLearningStyle(quizAnswers: any): { 
-  style: LearningStyle, 
-  recommendation: string 
+  concreteExpScore: number,
+  reflectiveScore: number,
+  theoreticalScore: number,
+  activeExpScore: number
 } {
   // Simple learning style quiz logic
   const scores = {
-    VISUAL: 0,
-    AUDITORY: 0,
-    KINESTHETIC: 0,
-    READING_WRITING: 0
+    CONCRETE_EXP: 0,
+    REFLECTIVE: 0,
+    THEORETICAL: 0,
+    ACTIVE_EXP: 0
   }
 
   // Example scoring logic (you'd replace this with actual quiz logic)
   Object.entries(quizAnswers || {}).forEach(([question, answer]) => {
     switch (answer) {
-      case 'VISUAL':
-        scores.VISUAL += 1
+      case 'CONCRETE_EXP':
+        scores.CONCRETE_EXP += 1
         break
-      case 'AUDITORY':
-        scores.AUDITORY += 1
+      case 'REFLECTIVE':
+        scores.REFLECTIVE += 1
         break
-      case 'KINESTHETIC':
-        scores.KINESTHETIC += 1
+      case 'THEORETICAL':
+        scores.THEORETICAL += 1
         break
-      case 'READING_WRITING':
-        scores.READING_WRITING += 1
+      case 'ACTIVE_EXP':
+        scores.ACTIVE_EXP += 1
         break
     }
   })
 
   // Find the highest scoring style
-  const style = Object.entries(scores).reduce((a, b) => a[1] > b[1] ? a : b)[0] as LearningStyle
+  const style = Object.entries(scores).reduce((a, b) => a[1] > b[1] ? a : b)[0]
 
   // Generate recommendation based on learning style
   const recommendations = {
-    VISUAL: 'Use diagrams, charts, and visual aids to enhance learning.',
-    AUDITORY: 'Utilize audio recordings, discussions, and verbal explanations.',
-    KINESTHETIC: 'Engage in hands-on activities and practical demonstrations.',
-    READING_WRITING: 'Focus on textbooks, note-taking, and written materials.'
+    CONCRETE_EXP: 'Use hands-on activities and practical demonstrations.',
+    REFLECTIVE: 'Utilize self-assessment and reflective journaling.',
+    THEORETICAL: 'Focus on theoretical foundations and conceptual understanding.',
+    ACTIVE_EXP: 'Engage in active experimentation and exploration.'
   }
 
   return {
-    style,
-    recommendation: recommendations[style]
+    concreteExpScore: scores.CONCRETE_EXP,
+    reflectiveScore: scores.REFLECTIVE,
+    theoreticalScore: scores.THEORETICAL,
+    activeExpScore: scores.ACTIVE_EXP
   }
 }

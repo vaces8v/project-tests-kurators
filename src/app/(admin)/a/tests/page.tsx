@@ -694,6 +694,7 @@ export default function TestsManagement() {
   const renderQuestionModal = () => (
     <Modal 
       isOpen={isQuestionModalOpen}
+      scrollBehavior='inside'
       onOpenChange={onQuestionModalOpenChange}
       backdrop="blur"
       size="2xl"
@@ -958,6 +959,7 @@ export default function TestsManagement() {
       <Modal 
         isOpen={isTestModalOpen}
         backdrop='blur'
+        scrollBehavior='inside'
         onOpenChange={onTestModalOpenChange}
         className="text-gray-800 dark:text-white"
         size="2xl"
@@ -1157,6 +1159,7 @@ export default function TestsManagement() {
       <Modal 
         isOpen={isCreateTestModalOpen}
         backdrop='blur'
+        scrollBehavior='inside'
         onOpenChange={onCreateTestModalOpenChange}
         className="text-gray-800 dark:text-white"
         size="2xl"
@@ -1358,6 +1361,7 @@ export default function TestsManagement() {
       <Modal 
         isOpen={isDeleteConfirmationOpen}
         backdrop='blur'
+        scrollBehavior='inside'
         onOpenChange={onDeleteConfirmationOpenChange}
         className="text-gray-800 dark:text-white"
       >

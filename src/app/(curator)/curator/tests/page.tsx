@@ -196,12 +196,36 @@ export default function CuratorTests() {
                       <Button 
                         variant="light" 
                         color="primary"
-                        onPress={() => {
-                          const testLink = `${window.location.origin}/test/${test.id}`
-                          navigator.clipboard.writeText(testLink)
-                          toast.success('Ссылка на тест скопирована', {
-                            description: testLink
-                          })
+                        onPress={async () => {
+                          try {
+                            // Create a test link
+                            const response = await fetch('/api/curator/test-links', {
+                              method: 'POST',
+                              headers: {
+                                'Content-Type': 'application/json'
+                              },
+                              body: JSON.stringify({
+                                testId: test.id,
+                                expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7 days from now
+                              })
+                            });
+                            
+                            const data = await response.json();
+                            
+                            if (!response.ok) {
+                              throw new Error(data.error || 'Failed to create test link');
+                            }
+
+                            const testLink = `${window.location.origin}/test/${data.linkId}`;
+                            await navigator.clipboard.writeText(testLink);
+                            toast.success('Ссылка на тест скопирована', {
+                              description: testLink
+                            });
+                          } catch (error) {
+                            toast.error('Ошибка при создании ссылки', {
+                              description: error instanceof Error ? error.message : 'Не удалось создать ссылку на тест'
+                            });
+                          }
                         }}
                         className="text-gray-400 hover:text-blue-600 flex items-center gap-2"
                       >

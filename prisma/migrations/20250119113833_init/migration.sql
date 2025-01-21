@@ -146,6 +146,70 @@ CREATE TABLE "Test" (
 );
 
 -- CreateTable
+CREATE TABLE "LearningStyleTest" (
+    "id" TEXT NOT NULL,
+    "title" TEXT NOT NULL DEFAULT 'Индивидуальный стиль обучения',
+    "description" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+    "testId" TEXT NOT NULL,
+
+    CONSTRAINT "LearningStyleTest_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "LearningStyleQuestion" (
+    "id" TEXT NOT NULL,
+    "text" TEXT NOT NULL,
+    "orderNumber" INTEGER NOT NULL,
+    "testId" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "LearningStyleQuestion_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "LearningStyleOption" (
+    "id" TEXT NOT NULL,
+    "text" TEXT NOT NULL,
+    "column" INTEGER NOT NULL,
+    "questionId" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "LearningStyleOption_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "LearningStyleResponse" (
+    "id" TEXT NOT NULL,
+    "score" INTEGER NOT NULL,
+    "questionId" TEXT NOT NULL,
+    "optionId" TEXT NOT NULL,
+    "resultId" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "LearningStyleResponse_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "LearningStyleResult" (
+    "id" TEXT NOT NULL,
+    "testId" TEXT NOT NULL,
+    "concreteExpScore" DOUBLE PRECISION NOT NULL,
+    "reflectiveScore" DOUBLE PRECISION NOT NULL,
+    "theoreticalScore" DOUBLE PRECISION NOT NULL,
+    "activeExpScore" DOUBLE PRECISION NOT NULL,
+    "testResultId" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "LearningStyleResult_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "_GroupStudents" (
     "A" TEXT NOT NULL,
     "B" TEXT NOT NULL,
@@ -169,6 +233,18 @@ CREATE UNIQUE INDEX "Group_code_key" ON "Group"("code");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "TestLink_linkId_key" ON "TestLink"("linkId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "LearningStyleTest_testId_key" ON "LearningStyleTest"("testId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "LearningStyleQuestion_testId_orderNumber_key" ON "LearningStyleQuestion"("testId", "orderNumber");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "LearningStyleResponse_resultId_questionId_optionId_key" ON "LearningStyleResponse"("resultId", "questionId", "optionId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "LearningStyleResult_testResultId_key" ON "LearningStyleResult"("testResultId");
 
 -- CreateIndex
 CREATE INDEX "_GroupStudents_B_index" ON "_GroupStudents"("B");
@@ -214,6 +290,30 @@ ALTER TABLE "TestLink" ADD CONSTRAINT "TestLink_createdBy_fkey" FOREIGN KEY ("cr
 
 -- AddForeignKey
 ALTER TABLE "Test" ADD CONSTRAINT "Test_authorId_fkey" FOREIGN KEY ("authorId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "LearningStyleTest" ADD CONSTRAINT "LearningStyleTest_testId_fkey" FOREIGN KEY ("testId") REFERENCES "Test"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "LearningStyleQuestion" ADD CONSTRAINT "LearningStyleQuestion_testId_fkey" FOREIGN KEY ("testId") REFERENCES "LearningStyleTest"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "LearningStyleOption" ADD CONSTRAINT "LearningStyleOption_questionId_fkey" FOREIGN KEY ("questionId") REFERENCES "LearningStyleQuestion"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "LearningStyleResponse" ADD CONSTRAINT "LearningStyleResponse_questionId_fkey" FOREIGN KEY ("questionId") REFERENCES "LearningStyleQuestion"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "LearningStyleResponse" ADD CONSTRAINT "LearningStyleResponse_optionId_fkey" FOREIGN KEY ("optionId") REFERENCES "LearningStyleOption"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "LearningStyleResponse" ADD CONSTRAINT "LearningStyleResponse_resultId_fkey" FOREIGN KEY ("resultId") REFERENCES "LearningStyleResult"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "LearningStyleResult" ADD CONSTRAINT "LearningStyleResult_testId_fkey" FOREIGN KEY ("testId") REFERENCES "LearningStyleTest"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "LearningStyleResult" ADD CONSTRAINT "LearningStyleResult_testResultId_fkey" FOREIGN KEY ("testResultId") REFERENCES "TestResult"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "_GroupStudents" ADD CONSTRAINT "_GroupStudents_A_fkey" FOREIGN KEY ("A") REFERENCES "Group"("id") ON DELETE CASCADE ON UPDATE CASCADE;

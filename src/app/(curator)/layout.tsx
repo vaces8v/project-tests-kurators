@@ -31,14 +31,6 @@ export default function CuratorLayout({ children }: { children: React.ReactNode 
   const pathname = usePathname()
   const [themeTransition, setThemeTransition] = useState(false)
 
-  const toggleTheme = () => {
-    setThemeTransition(true)
-
-    setTimeout(() => {
-      setTheme(theme === 'light' ? 'dark' : 'light')
-      setThemeTransition(false)
-    }, 300)
-  }
 
   const navItems = [
     { 
@@ -119,24 +111,6 @@ export default function CuratorLayout({ children }: { children: React.ReactNode 
         </NavbarContent>
 
         <NavbarContent justify="end">
-          <NavbarItem>
-            <Tooltip 
-              content={theme === 'light' ? 'Темная тема' : 'Светлая тема'}
-              classNames={{
-                content: "text-gray-700 dark:text-white bg-white dark:bg-gray-800"
-              }}
-            >
-              <Button 
-                isIconOnly 
-                variant="light" 
-                onPress={toggleTheme}
-                className="text-gray-800 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-700"
-              >
-                {theme === 'light' ? <Moon /> : <Sun />}
-              </Button>
-            </Tooltip>
-          </NavbarItem>
-
           <NavbarItem>
             <Tooltip 
               content="Выйти"

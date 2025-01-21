@@ -57,3 +57,42 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to delete test link' }, { status: 500 })
   }
 }
+
+export async function POST(request: NextRequest) {
+  try {
+    const session = await getServerSession(authOptions)
+
+    if (!session || session.user.role !== 'CURATOR') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const body = await request.json()
+    const { testId, expiresAt } = body
+
+    if (!testId) {
+      return NextResponse.json({ error: 'Test ID is required' }, { status: 400 })
+    }
+
+    // Generate a unique link ID (you can use any method you prefer)
+    const linkId = Math.random().toString(36).substring(2, 15) + 
+                  Math.random().toString(36).substring(2, 15)
+
+    const testLink = await prisma.testLink.create({
+      data: {
+        linkId,
+        createdBy: session.user.id,
+        expiresAt: expiresAt || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        testId: testId
+      }
+    })
+
+    return NextResponse.json({ 
+      id: testLink.id,
+      linkId: testLink.linkId,
+      expiresAt: testLink.expiresAt
+    })
+  } catch (error) {
+    console.error('Error creating test link:', error)
+    return NextResponse.json({ error: 'Failed to create test link' }, { status: 500 })
+  }
+}

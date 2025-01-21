@@ -31,6 +31,13 @@ enum TestStatus {
   DRAFT
 }
 
+enum LearningStyle {
+  VISUAL
+  AUDITORY
+  KINESTHETIC
+  READING_WRITING
+}
+
 model User {
   id        String   @id @default(cuid())
   name      String
@@ -116,6 +123,7 @@ model TestResult {
   responses     TestResponse[]
   totalScore    Float
   completedAt   DateTime @default(now())
+  learningStyleResult LearningStyleResult?
 }
 
 model TestResponse {
@@ -135,6 +143,8 @@ model TestLink {
   createdAt DateTime @default(now())
   expiresAt DateTime
   user      User     @relation(fields: [createdBy], references: [id])
+  test      Test     @relation(fields: [testId], references: [id])
+  testId    String
 }
 
 model StudentCategory {
@@ -163,4 +173,75 @@ model Test {
   testAssignments TestAssignment[]
   testResults   TestResult[]
   categories   StudentCategory[] @relation("CategoryTests")
+  learningStyleTest LearningStyleTest?
+  testLinks    TestLink[]
+}
+
+// Learning Style Assessment specific models
+model LearningStyleTest {
+  id          String   @id @default(cuid())
+  title       String   @default("Индивидуальный стиль обучения")
+  description String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  questions   LearningStyleQuestion[]
+  results     LearningStyleResult[]
+  testId      String   @unique
+  test        Test     @relation(fields: [testId], references: [id])
+}
+
+model LearningStyleQuestion {
+  id          String   @id @default(cuid())
+  text        String
+  orderNumber Int
+  test        LearningStyleTest @relation(fields: [testId], references: [id])
+  testId      String
+  options     LearningStyleOption[]
+  responses   LearningStyleResponse[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([testId, orderNumber])
+}
+
+model LearningStyleOption {
+  id          String   @id @default(cuid())
+  text        String
+  column      Int      // 1-4 corresponding to learning style columns
+  score       Int      @default(1)  // Add score field with default value
+  question    LearningStyleQuestion @relation(fields: [questionId], references: [id])
+  questionId  String
+  responses   LearningStyleResponse[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model LearningStyleResponse {
+  id          String   @id @default(cuid())
+  score       Int      // 1-4 score given by student
+  question    LearningStyleQuestion @relation(fields: [questionId], references: [id])
+  questionId  String
+  option      LearningStyleOption @relation(fields: [optionId], references: [id])
+  optionId    String
+  result      LearningStyleResult @relation(fields: [resultId], references: [id])
+  resultId    String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([resultId, questionId, optionId])
+}
+
+model LearningStyleResult {
+  id                String   @id @default(cuid())
+  test              LearningStyleTest @relation(fields: [testId], references: [id])
+  testId            String
+  responses         LearningStyleResponse[]
+  concreteExpScore  Float    // КО - обучение на конкретном опыте
+  reflectiveScore   Float    // РН - обучение рефлексивное
+  theoreticalScore  Float    // ТО - теоретическое обучение
+  activeExpScore    Float    // АН - активное экспериментирование
+  testResult        TestResult @relation(fields: [testResultId], references: [id])
+  testResultId      String    @unique
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 }

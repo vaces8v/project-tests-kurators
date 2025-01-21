@@ -22,7 +22,11 @@ export async function GET() {
         authorId: session.user.id
       },
       include: {
-        questions: true,
+        questions: {
+          include: {
+            options: true
+          }
+        },
         testAssignments: {
           include: {
             group: true
@@ -36,6 +40,18 @@ export async function GET() {
             maxScore: true,
             description: true
           }
+        },
+        learningStyleTest: {
+          include: {
+            questions: {
+              include: {
+                options: true
+              },
+              orderBy: {
+                orderNumber: 'asc'
+              }
+            }
+          }
         }
       }
     })
@@ -45,7 +61,18 @@ export async function GET() {
       id: test.id,
       title: test.title,
       description: test.description || '',
-      questions: test.questions,
+      questions: test.learningStyleTest 
+        ? test.learningStyleTest.questions.map(q => ({
+            id: q.id,
+            text: q.text,
+            type: 'SINGLE_CHOICE',
+            options: q.options.map(opt => ({
+              id: opt.id,
+              text: opt.text,
+              score: opt.column
+            }))
+          }))
+        : test.questions,
       assignedGroups: test.testAssignments.map(
         assignment => assignment.group.code
       ),
@@ -55,9 +82,9 @@ export async function GET() {
     return NextResponse.json(transformedTests)
   } catch (error) {
     console.error('Error fetching tests:', error)
-    return NextResponse.json({ 
-      error: 'Failed to fetch tests', 
-      details: error instanceof Error ? error.message : String(error)
-    }, { status: 500 })
+    return NextResponse.json(
+      { error: 'Failed to fetch tests', details: error instanceof Error ? error.message : String(error) },
+      { status: 500 }
+    )
   }
 }

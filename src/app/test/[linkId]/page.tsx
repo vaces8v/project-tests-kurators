@@ -33,18 +33,19 @@ type QuestionOption = {
   score: number
 }
 
-type TestAssignment = {
+type TestData = {
   test: {
     id: string
     title: string
     description: string
     questions: Question[]
   }
-  group?: {
+  students: Array<{
     id: string
-    name: string
-  }
-  students?: any[]
+    firstName: string
+    lastName: string
+    middleName: string
+  }>
 }
 
 export default function TestTakePage() {
@@ -52,7 +53,7 @@ export default function TestTakePage() {
   const router = useRouter()
   const linkId = params.linkId as string
 
-  const [testAssignment, setTestAssignment] = useState<TestAssignment | null>(null)
+  const [testData, setTestData] = useState<TestData | null>(null)
   const [selectedStudent, setSelectedStudent] = useState<string | undefined>(undefined)
   const [responses, setResponses] = useState<{ [key: string]: string[] }>({})
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0)
@@ -62,28 +63,15 @@ export default function TestTakePage() {
   useEffect(() => {
     async function fetchTestDetails() {
       try {
-        // Try fetching via linkId first
+        // Always fetch via linkId to ensure consistent data
         const response = await fetch(`/api/students/tests?uniqueLink=${linkId}`)
         const data = await response.json()
 
-        if (response.ok) {
-          setTestAssignment(data)
-        } else {
-          // Fallback to original test fetch method
-          const testResponse = await fetch(`/api/tests/${linkId}`)
-          const testData = await testResponse.json()
-
-          // Fetch students for the test's assigned groups
-          const studentsResponse = await fetch(`/api/students?groupCodes=${testData.assignedGroups.join(',')}&testId=${testData.id}`)
-          const studentsData = await studentsResponse.json()
-
-          // Ensure we have a valid test assignment structure
-          setTestAssignment({
-            test: testData,
-            students: studentsData,
-            group: testData.testAssignments?.[0]?.group
-          })
+        if (!response.ok) {
+          throw new Error(data.error || 'Failed to fetch test')
         }
+
+        setTestData(data)
       } catch (error) {
         toast.error('Недействительная ссылка на тест', {
           description: 'Ссылка на тест недействительна или истекла'
@@ -100,7 +88,7 @@ export default function TestTakePage() {
       const currentResponses = prev[questionId] || []
 
       // For single choice, replace the entire response
-      if (testAssignment?.test.questions.find(q => q.id === questionId)?.type === 'SINGLE_CHOICE') {
+      if (testData?.test.questions.find(q => q.id === questionId)?.type === 'SINGLE_CHOICE') {
         return {
           ...prev,
           [questionId]: selectedOptions
@@ -116,44 +104,49 @@ export default function TestTakePage() {
   }
 
   const submitTest = async () => {
-    if (!testAssignment) return
+    if (!testData?.test) return
 
     setIsSubmitting(true)
     try {
+      // Prepare responses data
+      const responsesData = Object.entries(responses).map(([questionId, selectedOptions]) => ({
+        questionId,
+        selectedOptions
+      }))
+
+      const payload = {
+        testId: testData.test.id,
+        ...(selectedStudent ? { studentId: selectedStudent } : {}),
+        responses: responsesData
+      }
+
+      console.log('Submitting test with payload:', payload)
+
       const response = await fetch('/api/v2/test-results', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({
-          testId: testAssignment.test.id,
-          studentId: selectedStudent || null,
-          responses: Object.entries(responses).map(([questionId, selectedOptions]) => ({
-            questionId,
-            selectedOptions: selectedOptions
-          }))
-        })
+        body: JSON.stringify(payload)
       })
-
-      if (response.ok) {
-        toast.success('Тест отправлен успешно!')
-        router.push('/test-completed')
-      } else {
+      
+      if (!response.ok) {
         const errorData = await response.json()
-        toast.error('Не удалось отправить тест', {
-          description: errorData.message || 'Пожалуйста, попробуйте еще раз'
-        })
+        throw new Error(errorData.details || errorData.error || 'Failed to submit test')
       }
+
+      toast.success('Тест отправлен успешно!')
+      router.push('/test-completed')
     } catch (error) {
       toast.error('Ошибка отправки теста', {
-        description: 'Пожалуйста, проверьте ваше интернет-соединение'
+        description: error instanceof Error ? error.message : 'Пожалуйста, проверьте ваше интернет-соединение'
       })
     } finally {
       setIsSubmitting(false)
     }
   }
 
-  if (!testAssignment) {
+  if (!testData) {
     return (
       <div className="flex justify-center items-center min-h-screen bg-white">
         <Spinner size="lg" />
@@ -172,11 +165,11 @@ export default function TestTakePage() {
         >
           <div className="bg-gradient-to-r from-blue-500 to-blue-600 p-6 text-white">
             <h1 className="text-3xl font-bold tracking-tight">
-              {testAssignment.test.title}
+              {testData.test.title}
             </h1>
-            {testAssignment.test.description && (
+            {testData.test.description && (
               <p className="text-blue-100 mt-2 text-sm">
-                {testAssignment.test.description}
+                {testData.test.description}
               </p>
             )}
           </div>
@@ -228,7 +221,7 @@ export default function TestTakePage() {
                   }}
                   renderValue={(items) => {
                     return items.map((item) => {
-                      const student = testAssignment.students?.find(s => s.id === item.key)
+                      const student = testData.students?.find(s => s.id === item.key)
                       return student
                         ? `${student.firstName} ${student.lastName} ${student.middleName || ''}`.trim()
                         : 'Выберите себя'
@@ -241,8 +234,8 @@ export default function TestTakePage() {
                     value: "text-blue-500 font-medium group-data-[has-value=true]:text-blue-500",
                   }}
                 >
-                  {testAssignment.students && testAssignment.students.length > 0 ? (
-                    testAssignment.students.map((student) => (
+                  {testData.students && testData.students.length > 0 ? (
+                    testData.students.map((student) => (
                       <SelectItem
                         key={student.id}
                         value={student.id}
@@ -279,48 +272,48 @@ export default function TestTakePage() {
             ) : (
               <div className="flex flex-col h-full">
                 <div className="flex-grow overflow-auto">
-                  {testAssignment && (
+                  {testData && (
                     <motion.div
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
                       transition={{ duration: 0.5 }}
                     >
-                      {currentQuestionIndex < testAssignment.test.questions.length ? (
+                      {currentQuestionIndex < testData.test.questions.length ? (
                         <div className="p-4">
                           <div className="mb-4">
                             <div className="bg-white border border-blue-100 rounded-2xl p-6 shadow-lg">
                               <h2 className="text-2xl font-bold text-blue-900 mb-6">
-                                {testAssignment.test.questions[currentQuestionIndex].text}
+                                {testData.test.questions[currentQuestionIndex].text}
                               </h2>
 
-                              {testAssignment.test.questions[currentQuestionIndex].type === 'TEXT' ? (
+                              {testData.test.questions[currentQuestionIndex].type === 'TEXT' ? (
                                 <textarea
                                   className="w-full p-4 resize-none border border-blue-200 rounded-xl bg-blue-50 text-blue-900 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-300"
                                   rows={4}
-                                  value={responses[testAssignment.test.questions[currentQuestionIndex].id]?.[0] ?? ''}
+                                  value={responses[testData.test.questions[currentQuestionIndex].id]?.[0] ?? ''}
                                   onChange={(e) => handleResponseChange(
-                                    testAssignment.test.questions[currentQuestionIndex].id,
+                                    testData.test.questions[currentQuestionIndex].id,
                                     [e.target.value]
                                   )}
                                   placeholder="Введите подробный ответ здесь..."
                                 />
                               ) : (
-                                testAssignment.test.questions[currentQuestionIndex].type === 'SINGLE_CHOICE' ? (
+                                testData.test.questions[currentQuestionIndex].type === 'SINGLE_CHOICE' ? (
                                   <RadioGroup
-                                    value={responses[testAssignment.test.questions[currentQuestionIndex].id]?.[0] ?? ''}
+                                    value={responses[testData.test.questions[currentQuestionIndex].id]?.[0] ?? ''}
                                     onValueChange={(value) =>
                                       handleResponseChange(
-                                        testAssignment.test.questions[currentQuestionIndex].id,
+                                        testData.test.questions[currentQuestionIndex].id,
                                         [value]
                                       )
                                     }
                                     className="space-y-6"
                                   >
-                                    {testAssignment.test.questions[currentQuestionIndex].options!.map((option, index) => (
+                                    {testData.test.questions[currentQuestionIndex].options!.map((option, index) => (
                                       <Radio
                                         key={option.id}
                                         value={option.id}
-                                        className={`p-4 bg-blue-50 rounded-xl border border-blue-200 hover:bg-blue-100 transition-colors group mb-2 ${index === testAssignment.test.questions[currentQuestionIndex].options!.length - 1 ? 'last:mb-0' : ''}`}
+                                        className={`p-4 bg-blue-50 rounded-xl border border-blue-200 hover:bg-blue-100 transition-colors group mb-2 ${index === testData.test.questions[currentQuestionIndex].options!.length - 1 ? 'last:mb-0' : ''}`}
                                       >
                                         <span className="text-blue-900 group-data-[selected=true]:text-blue-600 font-medium">
                                           {option.text}
@@ -329,10 +322,10 @@ export default function TestTakePage() {
                                     ))}
                                   </RadioGroup>
                                 ) : (
-                                  testAssignment.test.questions[currentQuestionIndex].type === 'MULTIPLE_CHOICE' ? (
+                                  testData.test.questions[currentQuestionIndex].type === 'MULTIPLE_CHOICE' ? (
                                     <div className="space-y-4">
-                                      {testAssignment.test.questions[currentQuestionIndex].options!.map((option) => {
-                                        const isSelected = responses[testAssignment.test.questions[currentQuestionIndex].id]?.includes(option.id);
+                                      {testData.test.questions[currentQuestionIndex].options!.map((option) => {
+                                        const isSelected = responses[testData.test.questions[currentQuestionIndex].id]?.includes(option.id);
                                         return (
                                           <label
                                             key={option.id}
@@ -345,13 +338,13 @@ export default function TestTakePage() {
                                               isSelected={isSelected}
                                               onChange={(e) => {
                                                 const checked = e.target.checked;
-                                                const currentResponses = responses[testAssignment.test.questions[currentQuestionIndex].id] || [];
+                                                const currentResponses = responses[testData.test.questions[currentQuestionIndex].id] || [];
                                                 const newResponses = checked
                                                   ? [...currentResponses, option.id]
                                                   : currentResponses.filter(id => id !== option.id);
 
                                                 handleResponseChange(
-                                                  testAssignment.test.questions[currentQuestionIndex].id,
+                                                  testData.test.questions[currentQuestionIndex].id,
                                                   newResponses
                                                 );
                                               }}
@@ -383,11 +376,11 @@ export default function TestTakePage() {
                               Назад
                             </Button>
 
-                            {currentQuestionIndex < testAssignment.test.questions.length - 1 ? (
+                            {currentQuestionIndex < testData.test.questions.length - 1 ? (
                               <Button
                                 color="primary"
                                 onPress={() => setCurrentQuestionIndex(prev => prev + 1)}
-                                isDisabled={!responses[testAssignment.test.questions[currentQuestionIndex].id]}
+                                isDisabled={!responses[testData.test.questions[currentQuestionIndex].id]}
                                 className="px-6"
                               >
                                 Далее
@@ -399,7 +392,7 @@ export default function TestTakePage() {
                                 isLoading={isSubmitting}
                                 isDisabled={
                                   !Object.keys(responses).length ||
-                                  Object.keys(responses).length !== testAssignment.test.questions.length
+                                  Object.keys(responses).length !== testData.test.questions.length
                                 }
                                 className="px-6"
                               >
@@ -419,7 +412,7 @@ export default function TestTakePage() {
                             isLoading={isSubmitting}
                             isDisabled={
                               !Object.keys(responses).length ||
-                              Object.keys(responses).length !== testAssignment.test.questions.length
+                              Object.keys(responses).length !== testData.test.questions.length
                             }
                             className="px-6"
                           >

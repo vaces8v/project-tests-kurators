@@ -1,6 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 
+interface TestResponse {
+  questionId: string;
+  selectedOptions: string[];
+}
+
+interface ProcessedResponse {
+  questionId: string;
+  selectedOption: string;
+  score: number;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
@@ -8,9 +19,13 @@ export async function POST(request: NextRequest) {
       testId, 
       studentId, 
       responses 
+    }: { 
+      testId: string; 
+      studentId: string; 
+      responses: TestResponse[] 
     } = body
 
-    // Validate input
+    // Validate input - both testId and studentId are required
     if (!testId || !studentId) {
       return NextResponse.json({ 
         error: 'Test ID and Student ID are required' 
@@ -33,79 +48,116 @@ export async function POST(request: NextRequest) {
       }, { status: 404 })
     }
 
-    // Calculate total score
-    let totalScore = 0
-
-    // Create test result
-    const testResult = await prisma.$transaction(async (tx) => {
-      // Create test result record
-      const result = await tx.testResult.create({
-        data: {
-          test: { connect: { id: testId } },
-          student: { connect: { id: studentId } },
-          totalScore: 0, // Temporary, will update later
-        }
-      })
-
-      // Process and save responses
-      const testResponses = await Promise.all(responses.map(async (response: any) => {
-        const question = test.questions.find(q => q.id === response.questionId)
-        
-        if (!question) {
-          throw new Error(`Question ${response.questionId} not found`)
-        }
-
-        let score = 0
-        let selectedOption = null
-
-        if (question.type === 'TEXT') {
-          // For text questions, manually score later
-          selectedOption = response.selectedOptions[0]
-        } else if (question.type === 'SINGLE_CHOICE') {
-          // Find the selected option
-          const option = question.options.find(opt => opt.id === response.selectedOptions[0])
-          if (option) {
-            score = option.score
-            selectedOption = option.id
-          }
-        } else if (question.type === 'MULTIPLE_CHOICE') {
-          // Sum scores for selected options
-          score = response.selectedOptions
-            .reduce((total: number, optionId: string) => {
-              const option = question.options.find(opt => opt.id === optionId)
-              return total + (option ? option.score : 0)
-            }, 0)
-          
-          selectedOption = JSON.stringify(response.selectedOptions)
-        }
-
-        totalScore += score
-
-        // Create test response
-        return tx.testResponse.create({
-          data: {
-            testResult: { connect: { id: result.id } },
-            question: { connect: { id: question.id } },
-            selectedOption: selectedOption,
-            score: score
-          }
-        })
-      }))
-
-      // Update total score
-      await tx.testResult.update({
-        where: { id: result.id },
-        data: { totalScore }
-      })
-
-      return result
+    console.log('Test found:', {
+      testId: test.id,
+      questionCount: test.questions.length,
+      questionIds: test.questions.map(q => q.id)
     })
 
-    return NextResponse.json(testResult, { status: 201 })
+    // Validate that all submitted questions belong to the test
+    const submittedQuestionIds = new Set(responses.map(r => r.questionId))
+    const testQuestionIds = new Set(test.questions.map(q => q.id))
+    
+    const invalidQuestions = [...submittedQuestionIds].filter(id => !testQuestionIds.has(id))
+    if (invalidQuestions.length > 0) {
+      return NextResponse.json({ 
+        error: 'Invalid questions submitted',
+        details: `The following questions do not belong to this test: ${invalidQuestions.join(', ')}. This may happen if the test was updated while you were taking it. Please refresh the page and try again.`
+      }, { status: 400 })
+    }
+
+    // Calculate total score and validate responses first
+    let totalScore = 0
+    console.log('Processing responses:', responses.map(r => r.questionId))
+    
+    const processedResponses = responses.map((response: TestResponse) => {
+      const question = test.questions.find(q => q.id === response.questionId)
+      
+      if (!question) {
+        console.log('Question not found:', {
+          searchedId: response.questionId,
+          availableIds: test.questions.map(q => q.id)
+        })
+        throw new Error(`Question ${response.questionId} not found`)
+      }
+
+      let score = 0
+      let selectedOption = ''
+
+      if (question.type === 'TEXT') {
+        selectedOption = response.selectedOptions[0] || ''
+      } else if (question.type === 'SINGLE_CHOICE') {
+        const selectedOptionId = response.selectedOptions[0]
+        if (!selectedOptionId) {
+          throw new Error(`No option selected for question ${question.id}`)
+        }
+        const option = question.options.find(opt => opt.id === selectedOptionId)
+        if (!option) {
+          throw new Error(`Option ${selectedOptionId} not found for question ${question.id}`)
+        }
+        score = option.score
+        selectedOption = option.id
+      } else if (question.type === 'MULTIPLE_CHOICE') {
+        score = response.selectedOptions
+          .reduce((total: number, optionId: string) => {
+            const option = question.options.find(opt => opt.id === optionId)
+            return total + (option ? option.score : 0)
+          }, 0)
+        selectedOption = response.selectedOptions.join(',')
+      }
+
+      totalScore += score
+
+      return {
+        questionId: question.id,
+        selectedOption,
+        score
+      }
+    })
+
+    try {
+      // Create test result
+      const testResult = await prisma.$transaction(async (tx) => {
+        // Create test result record
+        const result = await tx.testResult.create({
+          data: {
+            totalScore,
+            test: {
+              connect: { id: testId }
+            },
+            student: {
+              connect: { id: studentId }
+            }
+          }
+        })
+
+        // Create test responses
+        await Promise.all(processedResponses.map((response: ProcessedResponse) => 
+          tx.testResponse.create({
+            data: {
+              testResult: { connect: { id: result.id } },
+              question: { connect: { id: response.questionId } },
+              selectedOption: response.selectedOption,
+              score: response.score
+            }
+          })
+        ))
+
+        return result
+      })
+
+      return NextResponse.json(testResult, { status: 201 })
+    } catch (error) {
+      console.error('Transaction error:', error)
+      return NextResponse.json({ 
+        error: 'Failed to save test results',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      }, { status: 500 })
+    }
   } catch (error) {
-    console.error('Test result submission error:', error)
+    console.error('Request error:', error)
     return NextResponse.json({ 
-      error: 'Test result submission failed',
+      error: 'Failed to process request',
       details: error instanceof Error ? error.message : 'Unknown error'
     }, { status: 500 })
   }

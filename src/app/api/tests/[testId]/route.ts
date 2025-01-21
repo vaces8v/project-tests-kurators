@@ -26,7 +26,19 @@ export async function GET(
             group: true
           }
         },
-        categories: true
+        categories: true,
+        learningStyleTest: {
+          include: {
+            questions: {
+              include: {
+                options: true
+              },
+              orderBy: {
+                orderNumber: 'asc'
+              }
+            }
+          }
+        }
       }
     })
 
@@ -37,10 +49,21 @@ export async function GET(
     return NextResponse.json({
       ...test,
       assignedGroups: test.testAssignments.map(ta => ta.group.code),
-      questions: test.questions.map(q => ({
-        ...q,
-        options: q.options || []
-      }))
+      questions: test.learningStyleTest 
+        ? test.learningStyleTest.questions.map(q => ({
+            id: q.id,
+            text: q.text,
+            type: 'SINGLE_CHOICE',
+            options: q.options.map(opt => ({
+              id: opt.id,
+              text: opt.text,
+              score: opt.column
+            }))
+          }))
+        : test.questions.map(q => ({
+            ...q,
+            options: q.options || []
+          }))
     })
   } catch (error) {
     console.error('Error fetching test:', error)
@@ -70,6 +93,7 @@ export async function PUT(
         data: {
           title,
           description,
+          // Remove existing test assignments
           testAssignments: {
             deleteMany: {}
           },
@@ -118,24 +142,33 @@ export async function PUT(
         }
       }
 
-      // 4. Create new group assignments
+      // 4. Create new group assignments (with error handling)
       if (assignedGroups?.length > 0) {
-        // First find the groups by their codes
-        const groupsToAssign = await tx.group.findMany({
-          where: {
-            code: {
-              in: assignedGroups
+        try {
+          // First find the groups by their codes
+          const groupsToAssign = await tx.group.findMany({
+            where: {
+              code: {
+                in: assignedGroups
+              }
             }
-          }
-        });
-
-        if (groupsToAssign.length > 0) {
-          await tx.testAssignment.createMany({
-            data: groupsToAssign.map(group => ({
-              testId,
-              groupId: group.id
-            }))
           });
+
+          if (groupsToAssign.length > 0) {
+            // Safely create test assignments
+            await tx.testAssignment.createMany({
+              data: groupsToAssign.map(group => ({
+                testId,
+                groupId: group.id
+              })),
+              skipDuplicates: true  // Prevent duplicate assignments
+            });
+          } else {
+            console.warn(`No groups found for codes: ${assignedGroups.join(', ')}`)
+          }
+        } catch (assignmentError) {
+          console.error('Error creating test assignments:', assignmentError)
+          // Log the error but continue with the transaction
         }
       }
 
@@ -187,35 +220,138 @@ export async function DELETE(
 ) {
   try {
     const testId = params.testId
+    
+    // Validate testId
+    if (!testId) {
+      return NextResponse.json(
+        { error: 'Test ID is required' }, 
+        { status: 400 }
+      )
+    }
 
-    // First delete all related records
-    await prisma.$transaction([
-      // Delete test assignments
-      prisma.testAssignment.deleteMany({
-        where: { testId },
-      }),
-      // Delete questions and their options
-      prisma.questionOption.deleteMany({
-        where: {
-          question: {
-            testId,
-          },
-        },
-      }),
-      prisma.question.deleteMany({
-        where: { testId },
-      }),
-      // Finally delete the test
-      prisma.test.delete({
-        where: { id: testId },
-      }),
-    ])
+    // Check if test exists before attempting deletion
+    const existingTest = await prisma.test.findUnique({
+      where: { id: testId },
+      include: {
+        testAssignments: true,
+        questions: true,
+        learningStyleTest: true,
+        testResults: true,
+        testLinks: true
+      }
+    })
 
-    return NextResponse.json({ message: 'Test deleted successfully' })
+    if (!existingTest) {
+      return NextResponse.json(
+        { error: 'Test not found', details: `No test found with ID: ${testId}` }, 
+        { status: 404 }
+      )
+    }
+
+    // Perform deletion in a transaction with cascading delete
+    const deletedTest = await prisma.$transaction(async (tx) => {
+      // 1. Force delete all test assignments
+      await tx.testAssignment.deleteMany({
+        where: { testId: existingTest.id }
+      })
+
+      // 2. Delete test results and their responses
+      const testResultIds = existingTest.testResults.map(tr => tr.id)
+      await tx.testResponse.deleteMany({
+        where: { testResultId: { in: testResultIds } }
+      })
+      await tx.testResult.deleteMany({
+        where: { testId: existingTest.id }
+      })
+
+      // 3. Delete test links
+      await tx.testLink.deleteMany({
+        where: { testId: existingTest.id }
+      })
+
+      // 4. Delete question options
+      await tx.questionOption.deleteMany({
+        where: { question: { testId: existingTest.id } }
+      })
+
+      // 5. Delete questions
+      await tx.question.deleteMany({
+        where: { testId: existingTest.id }
+      })
+
+      // 6. Delete learning style test components if exists
+      if (existingTest.learningStyleTest) {
+        await tx.learningStyleResponse.deleteMany({
+          where: { 
+            result: { 
+              testId: existingTest.learningStyleTest.id 
+            } 
+          }
+        })
+        await tx.learningStyleResult.deleteMany({
+          where: { test: { id: existingTest.learningStyleTest.id } }
+        })
+        await tx.learningStyleOption.deleteMany({
+          where: { 
+            question: { 
+              testId: existingTest.learningStyleTest.id 
+            } 
+          }
+        })
+        await tx.learningStyleQuestion.deleteMany({
+          where: { testId: existingTest.learningStyleTest.id }
+        })
+        await tx.learningStyleTest.deleteMany({
+          where: { testId: existingTest.id }
+        })
+      }
+
+      // 7. Finally delete the test
+      return await tx.test.delete({
+        where: { id: testId }
+      })
+    })
+
+    return NextResponse.json({ 
+      message: 'Test deleted successfully', 
+      deletedTest: {
+        id: deletedTest.id,
+        title: deletedTest.title,
+        deletedAssignments: existingTest.testAssignments.length,
+        deletedResults: existingTest.testResults.length
+      }
+    }, { status: 200 })
   } catch (error) {
     console.error('Error deleting test:', error)
+    
+    // More specific error handling
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      // Handle known Prisma errors
+      if (error.code === 'P2025') {
+        return NextResponse.json(
+          { error: 'Test not found or already deleted', details: error.message }, 
+          { status: 404 }
+        )
+      }
+      
+      // Handle foreign key constraint errors
+      if (error.code === 'P2003') {
+        return NextResponse.json(
+          { 
+            error: 'Cannot delete test due to existing dependencies', 
+            details: 'The test is still referenced by other records' 
+          }, 
+          { status: 400 }
+        )
+      }
+    }
+
+    // Generic error handling
     return NextResponse.json(
-      { error: 'Failed to delete test', details: error instanceof Error ? error.message : String(error) },
+      { 
+        error: 'Failed to delete test', 
+        details: error instanceof Error ? error.message : 'Unknown error occurred' 
+      }, 
       { status: 500 }
     )
   }

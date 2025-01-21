@@ -38,14 +38,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [themeTransition, setThemeTransition] = useState(false)
   const { isOpen, onClose, onOpen } = useDisclosure()
 
-  const toggleTheme = () => {
-    setThemeTransition(true)
-
-    setTimeout(() => {
-      setTheme(theme === 'light' ? 'dark' : 'light')
-      setThemeTransition(false)
-    }, 300)
-  }
 
   const navItems = [
     { 
@@ -183,21 +175,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                     {renderNavItems(true)}
                   </div>
                   <div className="flex justify-between w-full mt-auto p-4">
-                    <Tooltip 
-                      content={theme === 'light' ? 'Темная тема' : 'Светлая тема'}
-                      classNames={{
-                        content: "text-gray-700 dark:text-white bg-white dark:bg-gray-800"
-                      }}
-                    >
-                      <Button 
-                        isIconOnly 
-                        variant="light" 
-                        onPress={toggleTheme}
-                        className="text-gray-800 dark:text-white hover:text-blue-600 dark:hover:text-blue-400"
-                      >
-                        {theme === 'light' ? <Moon /> : <Sun />}
-                      </Button>
-                    </Tooltip>
 
                     <Tooltip 
                       content="Выйти"
@@ -227,23 +204,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </NavbarContent>
 
         <NavbarContent justify="center" className="hidden sm:flex">
-          <NavbarItem>
-            <Tooltip 
-              content={theme === 'light' ? 'Темная тема' : 'Светлая тема'}
-              classNames={{
-                content: "text-gray-700 dark:text-white bg-white dark:bg-gray-800"
-              }}
-            >
-              <Button 
-                isIconOnly 
-                variant="light" 
-                onPress={toggleTheme}
-                className="text-gray-800 dark:text-white hover:text-blue-600 dark:hover:text-blue-400"
-              >
-                {theme === 'light' ? <Moon /> : <Sun />}
-              </Button>
-            </Tooltip>
-          </NavbarItem>
           <NavbarItem>
             <Tooltip 
               content="Выйти"
